@@ -5,6 +5,7 @@ MUST = in the roadmap's MVP list and on the critical path of the cycle. SHOULD =
 without it for a first pilot, or it's a cheap enabler. LATER = Phase 2/3 or explicitly excluded.
 
 ## MUST HAVE
+
 **Foundation**: multi-tenant architecture (RLS), authentication, users/memberships/invitations, RBAC with configurable
 roles + external scopes, organisations (multi-classification) + contacts, basic CRM (opportunities, configurable pipeline,
 activities timeline, WON → brief), configurable nomenclatures (asset types, dimensions, services, stages, categories, geo areas).
@@ -12,8 +13,9 @@ activities timeline, WON → brief), configurable nomenclatures (asset types, di
 **OOH Core**: Brief (manual + from opportunity + AI email draft), Campaign, Campaign Location, OOH Inventory
 (asset → mount position → face, terms direct/subleased, verification, passport), map (geocode store, inventory around it,
 click-to-add, reverse geocode, filters, availability, history), candidate positions, Street View, distance + driving route
-+ direction/arrow, study generation (online study + print-to-PDF of the preview), client approval (portal, per position
-approve/reject/comment), double-booking prevention, duplicate-asset prevention.
+
+- direction/arrow, study generation (online study + print-to-PDF of the preview), client approval (portal, per position
+  approve/reject/comment), double-booking prevention, duplicate-asset prevention.
 
 **Operations**: production requirement auto-generated from approvals + production order, decorator assignment,
 mobile field interface (PWA), photo/video evidence per position with auto metadata, evidence review, campaign location
@@ -30,6 +32,7 @@ operational alerts (natural-language digest of rule-based alerts), basic assista
 **Cross-cutting**: audit trail, structured file storage, dashboard control tower, Company 360°.
 
 ## SHOULD HAVE (MVP if time allows; first post-pilot increment)
+
 - Marketing lists UI (consent fields themselves are MUST, because they're part of `contact`)
 - Lead entity/conversion (depends on OPD-01)
 - AI research hints / advisory score per candidate (R§19 describes it, but the MVP AI list doesn't include it)
@@ -40,6 +43,7 @@ operational alerts (natural-language digest of rule-based alerts), basic assista
 - Basic campaign report page in portal
 
 ## LATER
+
 **Phase 2** [R§44]: advanced client portal, supplier portal (production + OOH supplier), invoicing integration
 (Romanian providers, e.g. SmartBill / Oblio / e-Factura; OPD), external calendar sync, advanced sales automation, newsletter
 platform integration, reporting dashboards, financial analytics, advanced campaign reporting, document templates,

@@ -11,7 +11,7 @@ user (global identity: email, password hash, name, locale)       ← one person,
 platform_admin (user_id)         ← Super Admin, outside tenant RBAC
 ```
 
-Why a *global* user plus per-tenant membership: a decorator team or an agency may work with several OOH
+Why a _global_ user plus per-tenant membership: a decorator team or an agency may work with several OOH
 companies on the platform, so one login needs to reach several tenants and pick one [R§3 "single user may have
 more than one role"; R§5 SaaS]. Each access token carries exactly **one** active tenant.
 
@@ -37,21 +37,21 @@ more than one role"; R§5 SaaS]. Each access token carries exactly **one** activ
 
 ## 3. Role templates
 
-| Role | Kind | Default scope | Purpose |
-|---|---|---|---|
-| Super Admin | platform | — | Tenants, plans, platform health [R§3] |
-| Company Admin | internal | ALL | Users, roles, settings, nomenclatures |
-| Management | internal | ALL (read-mostly) | Visibility over everything incl. financials |
-| OOH Buyer / Account Manager | internal | ALL for ops | Briefs, campaigns, research, studies, approvals, field ops |
-| Sales | internal | OWN for pipeline, ALL read for orgs | Prospects, opportunities, activities |
-| Finance / Commercial | internal | ALL | Tariffs, costs, revenue, margins, billable items |
-| Production Manager | internal | ALL | Production orders, suppliers, artwork |
-| Decorator / Installation Team | external* | ASSIGNED | Mobile field jobs + evidence |
-| Production Supplier | external | ORGANISATION | Their production orders (portal = P2) |
-| OOH Supplier | external | ORGANISATION | Their subleased inventory (portal = P2) |
-| Agency User | external | ORGANISATION | Campaigns where their org is agency |
-| End Client | external | ORGANISATION | Campaigns where their org is client |
-| Viewer | internal or external | ALL or ORGANISATION | Read-only reporting |
+| Role                          | Kind                 | Default scope                       | Purpose                                                    |
+| ----------------------------- | -------------------- | ----------------------------------- | ---------------------------------------------------------- |
+| Super Admin                   | platform             | —                                   | Tenants, plans, platform health [R§3]                      |
+| Company Admin                 | internal             | ALL                                 | Users, roles, settings, nomenclatures                      |
+| Management                    | internal             | ALL (read-mostly)                   | Visibility over everything incl. financials                |
+| OOH Buyer / Account Manager   | internal             | ALL for ops                         | Briefs, campaigns, research, studies, approvals, field ops |
+| Sales                         | internal             | OWN for pipeline, ALL read for orgs | Prospects, opportunities, activities                       |
+| Finance / Commercial          | internal             | ALL                                 | Tariffs, costs, revenue, margins, billable items           |
+| Production Manager            | internal             | ALL                                 | Production orders, suppliers, artwork                      |
+| Decorator / Installation Team | external*            | ASSIGNED                            | Mobile field jobs + evidence                               |
+| Production Supplier           | external             | ORGANISATION                        | Their production orders (portal = P2)                      |
+| OOH Supplier                  | external             | ORGANISATION                        | Their subleased inventory (portal = P2)                    |
+| Agency User                   | external             | ORGANISATION                        | Campaigns where their org is agency                        |
+| End Client                    | external             | ORGANISATION                        | Campaigns where their org is client                        |
+| Viewer                        | internal or external | ALL or ORGANISATION                 | Read-only reporting                                        |
 
 \* Decorators can also be employees (internal membership + Decorator role). Scope stays `ASSIGNED`.
 
@@ -60,29 +60,29 @@ more than one role"; R§5 SaaS]. Each access token carries exactly **one** activ
 Legend: **A** = all, **O** = own, **S** = assigned, **G** = own organisation, **–** = none. Columns: V=View, C=Create,
 E=Edit, D=Delete (soft), Ap=Approve/transition, X=Export.
 
-| Module | Company Admin | Management | Buyer / AM | Sales | Finance | Prod. Mgr | Decorator | Prod. Supplier | OOH Supplier | Agency | Client | Viewer |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Users & roles | VCEDAp | V | – | – | – | – | – | – | – | – | – | – |
-| Settings & nomenclatures | VCED | V | V | V | V | V | – | – | – | – | – | – |
-| Organisations & contacts | VCEDX | VX | VCE | VCE(X) | V | V (suppliers) | – | – | – | – | – | V |
-| Opportunities & pipeline | VCEDX | VX | V | VCE **O**, V A | V | – | – | – | – | – | – | V |
-| Activities | VCED | V | VCE | VCE | V | V | – | – | – | – | – | – |
-| Briefs | VCED | V | VCE Ap(confirm/convert) | VC | V | V | – | – | – | C (P2 portal) | C (P2 portal) | – |
-| Campaigns & locations | VCED | V X | VCE Ap X | V | V | V | – | – | – | V **G** | V **G** | V |
-| Inventory (assets) | VCED | V X | VCE Ap(verify, availability) X | V | V (+terms) | V | V **S** (job positions) | – | V **G** (own supplied) | – | – | V |
-| Research / candidates | V | V | VCED | – | V | – | – | – | – | – | – | – |
-| Studies | V | V | VCE Ap(publish) X | – | V | V | – | – | – | V **G** | V **G** | – |
-| Client decisions | V | V | Ap on-behalf (OPD-06) | – | – | – | – | – | – | Ap **G** | Ap **G** | – |
-| Production orders | V | V | VC | – | V | VCE Ap X | – | V E(status) **G** (P2) | – | – | – | – |
-| Field jobs | V | V | VCE Ap(assign) | – | V | V | V E **S** | – | – | – | – | – |
-| Evidence | V | V | V Ap(review) | – | – | V | VC **S** | – | – | V **G** (accepted only) | V **G** (accepted only) | – |
-| Tariffs | V | V | V (sell) | – | VCE Ap(publish) X | – | – | – | – | – | – | – |
-| Costs / revenue / margins | V | VX | V (A), E per own locations | – | VCE Ap(lock) X | V (production costs) | – | – | – | – | – | – |
-| Tasks | VCED | V | VCE | VCE | VCE | VCE | V E **S** | – | – | – | – | – |
-| Calendar | V | V | V | V | V | V | V **S** | – | – | – | – | V |
-| Reports / dashboard | V X | V X | V X | V (sales) | V X | V (ops) | – | – | – | V **G** (campaign report) | V **G** | V |
-| AI assistant | V | V | V | V | V | V | – | – | – | – | – | – |
-| Audit log | V X | V | V (own entities) | – | V (commercial) | – | – | – | – | – | – | – |
+| Module                    | Company Admin | Management | Buyer / AM                     | Sales          | Finance           | Prod. Mgr            | Decorator               | Prod. Supplier         | OOH Supplier           | Agency                    | Client                  | Viewer |
+| ------------------------- | ------------- | ---------- | ------------------------------ | -------------- | ----------------- | -------------------- | ----------------------- | ---------------------- | ---------------------- | ------------------------- | ----------------------- | ------ |
+| Users & roles             | VCEDAp        | V          | –                              | –              | –                 | –                    | –                       | –                      | –                      | –                         | –                       | –      |
+| Settings & nomenclatures  | VCED          | V          | V                              | V              | V                 | V                    | –                       | –                      | –                      | –                         | –                       | –      |
+| Organisations & contacts  | VCEDX         | VX         | VCE                            | VCE(X)         | V                 | V (suppliers)        | –                       | –                      | –                      | –                         | –                       | V      |
+| Opportunities & pipeline  | VCEDX         | VX         | V                              | VCE **O**, V A | V                 | –                    | –                       | –                      | –                      | –                         | –                       | V      |
+| Activities                | VCED          | V          | VCE                            | VCE            | V                 | V                    | –                       | –                      | –                      | –                         | –                       | –      |
+| Briefs                    | VCED          | V          | VCE Ap(confirm/convert)        | VC             | V                 | V                    | –                       | –                      | –                      | C (P2 portal)             | C (P2 portal)           | –      |
+| Campaigns & locations     | VCED          | V X        | VCE Ap X                       | V              | V                 | V                    | –                       | –                      | –                      | V **G**                   | V **G**                 | V      |
+| Inventory (assets)        | VCED          | V X        | VCE Ap(verify, availability) X | V              | V (+terms)        | V                    | V **S** (job positions) | –                      | V **G** (own supplied) | –                         | –                       | V      |
+| Research / candidates     | V             | V          | VCED                           | –              | V                 | –                    | –                       | –                      | –                      | –                         | –                       | –      |
+| Studies                   | V             | V          | VCE Ap(publish) X              | –              | V                 | V                    | –                       | –                      | –                      | V **G**                   | V **G**                 | –      |
+| Client decisions          | V             | V          | Ap on-behalf (OPD-06)          | –              | –                 | –                    | –                       | –                      | –                      | Ap **G**                  | Ap **G**                | –      |
+| Production orders         | V             | V          | VC                             | –              | V                 | VCE Ap X             | –                       | V E(status) **G** (P2) | –                      | –                         | –                       | –      |
+| Field jobs                | V             | V          | VCE Ap(assign)                 | –              | V                 | V                    | V E **S**               | –                      | –                      | –                         | –                       | –      |
+| Evidence                  | V             | V          | V Ap(review)                   | –              | –                 | V                    | VC **S**                | –                      | –                      | V **G** (accepted only)   | V **G** (accepted only) | –      |
+| Tariffs                   | V             | V          | V (sell)                       | –              | VCE Ap(publish) X | –                    | –                       | –                      | –                      | –                         | –                       | –      |
+| Costs / revenue / margins | V             | VX         | V (A), E per own locations     | –              | VCE Ap(lock) X    | V (production costs) | –                       | –                      | –                      | –                         | –                       | –      |
+| Tasks                     | VCED          | V          | VCE                            | VCE            | VCE               | VCE                  | V E **S**               | –                      | –                      | –                         | –                       | –      |
+| Calendar                  | V             | V          | V                              | V              | V                 | V                    | V **S**                 | –                      | –                      | –                         | –                       | V      |
+| Reports / dashboard       | V X           | V X        | V X                            | V (sales)      | V X               | V (ops)              | –                       | –                      | –                      | V **G** (campaign report) | V **G**                 | V      |
+| AI assistant              | V             | V          | V                              | V              | V                 | V                    | –                       | –                      | –                      | –                         | –                       | –      |
+| Audit log                 | V X           | V          | V (own entities)               | –              | V (commercial)    | –                    | –                       | –                      | –                      | –                         | –                       | –      |
 
 Comments (`comment.visibility = INTERNAL | EXTERNAL`): external users only ever read or write EXTERNAL comments.
 
