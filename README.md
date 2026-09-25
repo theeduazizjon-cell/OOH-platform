@@ -11,6 +11,7 @@ Row-Level Security · Drizzle ORM · Redis · Vitest + Testcontainers.
 
 ```
 apps/api            NestJS HTTP API (and later the worker entrypoint)
+apps/web            React SPA (Vite, TanStack Router/Query, Tailwind): /app now; /portal, /field later
 packages/contracts  permission catalog, role templates, error contract (shared with the web app)
 packages/db         Drizzle schema, SQL migrations (incl. RLS), tenant transaction helpers, seeds
 infrastructure/     docker compose for local PostgreSQL/PostGIS, Redis, Mailpit
@@ -31,10 +32,13 @@ cp .env.example .env
 pnpm infra:up          # PostgreSQL 18 + PostGIS, Redis, Mailpit (creates the ooh_app role)
 pnpm build             # builds shared packages
 pnpm db:migrate        # applies migrations as the schema owner
-pnpm db:seed           # demo tenant "demo" with the 12 system roles
-pnpm dev               # API on http://localhost:3000
+pnpm db:seed           # 2 demo tenants with the 12 system roles, and 2 demo users
+pnpm dev               # API on http://localhost:3000, web app on http://localhost:5173
 curl localhost:3000/api/v1/health
 ```
+
+Sign in at http://localhost:5173 with `admin@demo.local` / `demo-password-change-me` (Company Admin of
+"Demo OOH SRL", Viewer of "Second OOH SRL") or `viewer@demo.local` (Viewer).
 
 ## Everyday commands
 

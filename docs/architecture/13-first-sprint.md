@@ -2,10 +2,11 @@
 
 ## Progress
 
-| Step                    | Stories         | Status                                           |
-| ----------------------- | --------------- | ------------------------------------------------ |
-| Step 1 — foundation     | S1–S8, S12, S13 | ✅ done 2026-09-25 (branch `feat/m0-foundation`) |
-| Step 2 — authentication | S9–S11          | next                                             |
+| Step                    | Stories                                      | Status                                           |
+| ----------------------- | -------------------------------------------- | ------------------------------------------------ |
+| Step 1 — foundation     | S1–S8, S12, S13                              | ✅ done 2026-09-25 (branch `feat/m0-foundation`) |
+| Step 2 — authentication | S9–S11                                       | ✅ done 2026-09-25 (branch `feat/m1-auth`)       |
+| Step 3 — M1 second half | invitations, roles admin, user management UI | next                                             |
 
 Deviations from the plan: `packages/config` was dropped (root-level tooling configs); PostgreSQL 18 instead
 of 16 (native `uuidv7()`); object storage (MinIO) deferred to M4 since MinIO's community distribution
