@@ -134,7 +134,9 @@ describe('login', () => {
   it('issues an access token and a hardened refresh cookie', async () => {
     const response = await login('admin');
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ tenantId: tenantA, accessToken: expect.any(String) });
+    const body = response.json<{ tenantId: string; accessToken: string }>();
+    expect(body.tenantId).toBe(tenantA);
+    expect(body.accessToken.split('.')).toHaveLength(3);
     expect(response.headers['cache-control']).toBe('no-store');
     const cookie = response.cookies.find((c) => c.name === REFRESH_COOKIE_NAME)!;
     expect(cookie).toMatchObject({ httpOnly: true, sameSite: 'Strict', path: '/api/v1/auth' });
