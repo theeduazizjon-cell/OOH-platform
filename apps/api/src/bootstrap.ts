@@ -1,3 +1,4 @@
+import cookie from '@fastify/cookie';
 import helmet from '@fastify/helmet';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Logger } from 'nestjs-pino';
@@ -7,9 +8,10 @@ import { assignRequestId, REQUEST_ID_HEADER } from './core/http/request-id';
 
 export const API_PREFIX = 'api/v1';
 
-export function createFastifyAdapter(): FastifyAdapter {
+export function createFastifyAdapter(env: Env): FastifyAdapter {
   return new FastifyAdapter({
     genReqId: assignRequestId,
+    trustProxy: env.TRUST_PROXY,
     bodyLimit: 1024 * 1024, // JSON bodies only; files go straight to object storage via presigned URLs
   });
 }
@@ -25,6 +27,7 @@ export async function configureApp(app: NestFastifyApplication, env: Env): Promi
     exposedHeaders: [REQUEST_ID_HEADER, 'etag'],
   });
   await app.register(helmet);
+  await app.register(cookie);
   app
     .getHttpAdapter()
     .getInstance()

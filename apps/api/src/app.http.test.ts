@@ -12,6 +12,7 @@ const env: Env = loadEnv({
   LOG_LEVEL: 'silent',
   DATABASE_URL: 'postgres://ooh_app:ooh_app@localhost:1/none',
   REDIS_URL: 'redis://localhost:1',
+  JWT_SECRET: 'test-secret-test-secret-test-secret-123',
 });
 
 interface Fakes {
@@ -32,7 +33,7 @@ async function createTestApp(fakes: Fakes): Promise<NestFastifyApplication> {
     .overrideProvider(RedisService)
     .useValue({ onApplicationShutdown: () => Promise.resolve(), ...fakes.redis })
     .compile();
-  app = moduleRef.createNestApplication<NestFastifyApplication>(createFastifyAdapter());
+  app = moduleRef.createNestApplication<NestFastifyApplication>(createFastifyAdapter(env));
   await configureApp(app, env);
   await app.init();
   await app.getHttpAdapter().getInstance().ready();

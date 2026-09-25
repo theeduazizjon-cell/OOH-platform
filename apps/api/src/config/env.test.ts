@@ -4,9 +4,23 @@ import { InvalidEnvironmentError, loadEnv } from './env';
 const valid = {
   DATABASE_URL: 'postgres://ooh_app:ooh_app@localhost:5432/ooh',
   REDIS_URL: 'redis://localhost:6379',
+  JWT_SECRET: 'test-secret-test-secret-test-secret-123',
 };
 
 describe('loadEnv', () => {
+  it('derives secure cookies from NODE_ENV and forbids insecure cookies in production', () => {
+    expect(loadEnv({ ...valid }).COOKIE_SECURE).toBe(false);
+    expect(loadEnv({ ...valid, NODE_ENV: 'production' }).COOKIE_SECURE).toBe(true);
+    expect(loadEnv({ ...valid, COOKIE_SECURE: 'true' }).COOKIE_SECURE).toBe(true);
+    expect(() => loadEnv({ ...valid, NODE_ENV: 'production', COOKIE_SECURE: 'false' })).toThrow(
+      InvalidEnvironmentError,
+    );
+  });
+
+  it('rejects a short JWT secret', () => {
+    expect(() => loadEnv({ ...valid, JWT_SECRET: 'short' })).toThrow(/JWT_SECRET/);
+  });
+
   it('applies defaults and parses CORS origins', () => {
     const env = loadEnv({ ...valid, CORS_ORIGINS: 'http://localhost:5173, https://app.example.com ,' });
     expect(env).toMatchObject({ NODE_ENV: 'development', LOG_LEVEL: 'info', API_PORT: 3000 });

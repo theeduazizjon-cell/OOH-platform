@@ -9,7 +9,7 @@ async function bootstrap(): Promise<void> {
   const env = loadEnv();
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule.forRoot(env),
-    createFastifyAdapter(),
+    createFastifyAdapter(env),
     {
       bufferLogs: true,
     },

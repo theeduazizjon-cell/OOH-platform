@@ -32,6 +32,14 @@ export class DatabaseService implements OnApplicationBootstrap, OnApplicationShu
     return withUserTx(this.connection.db, userId, fn);
   }
 
+  /**
+   * A transaction with NO tenant or user context. RLS hides all tenant data here, so it is only
+   * useful for the pre-authentication login lookup function and anonymous audit events.
+   */
+  withoutContext<T>(fn: (tx: Transaction) => Promise<T>): Promise<T> {
+    return this.connection.db.transaction(fn);
+  }
+
   /** Health probe: proves connectivity and that PostGIS is installed. */
   async ping(): Promise<{ postgis: string }> {
     const [row] = await this.connection.client<
