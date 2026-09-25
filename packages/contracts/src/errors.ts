@@ -7,7 +7,11 @@ export const ERROR_CODES = {
   VALIDATION_FAILED: 422,
   BAD_REQUEST: 400,
   UNAUTHENTICATED: 401,
+  INVALID_CREDENTIALS: 401,
+  /** Access token expired or permissions changed: the client should refresh and retry. */
+  TOKEN_EXPIRED: 401,
   FORBIDDEN: 403,
+  NO_ACTIVE_MEMBERSHIP: 403,
   NOT_FOUND: 404,
   CONFLICT: 409,
   INVALID_TRANSITION: 409,
