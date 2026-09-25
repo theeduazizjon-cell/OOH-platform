@@ -1,0 +1,34 @@
+{
+  "name": "ooh-platform",
+  "private": true,
+  "packageManager": "pnpm@10.34.5",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:int": "turbo run test:int",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "infra:up": "docker compose -f infrastructure/docker/docker-compose.yml up -d --wait",
+    "infra:down": "docker compose -f infrastructure/docker/docker-compose.yml down",
+    "infra:reset": "docker compose -f infrastructure/docker/docker-compose.yml down -v",
+    "db:generate": "pnpm --filter @ooh/db db:generate",
+    "db:migrate": "pnpm --filter @ooh/db db:migrate",
+    "db:seed": "pnpm --filter @ooh/db db:seed"
+  },
+  "devDependencies": {
+    "@eslint/js": "9.39.5",
+    "@types/node": "22.20.4",
+    "eslint": "9.39.5",
+    "globals": "16.5.0",
+    "prettier": "3.9.9",
+    "turbo": "2.11.4",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.70.1"
+  }
+}

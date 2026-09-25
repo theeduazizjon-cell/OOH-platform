@@ -1,0 +1,13 @@
+packages:
+  - apps/*
+  - packages/*
+
+onlyBuiltDependencies:
+  - '@swc/core'
+  - '@nestjs/core'
+  - cpu-features
+  - esbuild
+  - ssh2
+
+ignoredBuiltDependencies:
+  - protobufjs
