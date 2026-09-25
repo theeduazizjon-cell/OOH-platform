@@ -1,0 +1,73 @@
+# 09 — Frontend Screen Map
+
+## UX principles (from the roadmap)
+- Very simple for operational users; optimised for map-based work; avoid excessive nesting [R§2, R§42].
+- **Work happens in the Campaign Location workspace.** Users shouldn't have to jump between modules to push one store through its
+  lifecycle.
+- Five status dimensions are shown as **one badge** plus an expandable detail [R§18].
+- Action buttons come from the state machine (only valid actions appear).
+- Dashboard shows only what needs action [R§35 "avoid decorative dashboards"].
+- A global command palette (⌘K) searches companies, campaigns, locations, assets and tasks.
+
+## Navigation (flattened from R§42)
+Sidebar (internal app `/app`): **Dashboard · Requests · Campaigns · Map · Inventory · Operations · Calendar · Tasks ·
+CRM · Commercial · Reports · Admin**. The AI Assistant is a **slide-over panel available on every screen** rather than
+a separate page, so it keeps page context ("summarise this campaign"). Sub-sections are tabs/filters inside a page instead of nested menus
+(e.g. Inventory has type tabs Poles/Billboards/Prisms/Mesh/Walls/Other; Operations has Production/Installation/Maintenance/Removal tabs).
+
+## Internal app `/app`
+| Screen | Route | Purpose | Key components | Phase |
+|---|---|---|---|---|
+| Login / reset / accept invite | `/login`, `/reset`, `/invite/:token` | Auth | — | MVP |
+| Tenant picker | `/select-tenant` | Multi-membership users | — | MVP |
+| **Dashboard (control tower)** | `/app` | Ops tiles (active, starting/ending this week, pending installs/removals, overdue), financial tiles (revenue, cost, GP, GM%), sales tiles, **critical alerts list** | Alert list is the hero | MVP |
+| Requests inbox | `/app/requests` | Draft briefs (AI badge), unprocessed emails, confirmed-not-converted | split view: email ⟷ extracted form | MVP |
+| Brief editor | `/app/requests/:id` | Review/edit AI fields (provenance highlighting), lines, attachments, convert | | MVP |
+| Campaigns list | `/app/campaigns` | Filter by client/agency/status/period; rollup "7/7 live" | | MVP |
+| Campaign overview | `/app/campaigns/:id` | Locations table + map of all locations, timeline, financial summary, files, comments | | MVP |
+| **Campaign Location workspace** | `/app/locations/:id/{research,study,production,field,financials,files,activity}` | Everything for one store. Header: status badge, dates, next action button | tabs | MVP |
+| ↳ Research tab | `…/research` | Split: map (store pin, radius, inventory, candidates, route, POIs toggle) ⟷ candidate list; Street View pane; candidate drawer (distance, route, arrow, traffic dir, visibility, photos, simulation, cost estimate, AI hint) | map is first-class | MVP |
+| ↳ Study tab | `…/study` | Select + order items, descriptions (AI draft), preview as client sees it, mark ready, publish, decisions status | | MVP |
+| ↳ Production tab | `…/production` | Generated requirement (e.g. 7 × 0.8×2 m: L3 R2 S2), artwork, supplier, deadline, status | | MVP |
+| ↳ Field tab | `…/field` | Installation/maintenance/removal jobs, assignment, evidence gallery per position, review accept/reject | | MVP |
+| ↳ Financials tab | `…/financials` | Cost & revenue lines, tariff source, overrides, GP/GM% | permission-gated | MVP |
+| **OOH Map (global)** | `/app/map` | All inventory; filters (type, availability for a date range, verification, owner/supplier, area, client history); clustering; campaign overlay | | MVP |
+| Inventory list | `/app/inventory?type=pole` | Tabular inventory with type tabs, bulk import (CSV, P2) | | MVP |
+| **Asset passport** | `/app/inventory/:id` | Digital passport [R§14]: map + Street View, mount positions/faces diagram, terms history, photos, verifications, booking calendar/history, documents, notes, audit | | MVP |
+| Operations board | `/app/operations?tab=installation` | Jobs by status column; date/decorator filters; bulk assign | | MVP |
+| Production orders | `/app/operations?tab=production` | Orders pipeline | | MVP |
+| Monitoring | `/app/operations?tab=monitoring` | Live locations, missing evidence, expiring, removal due/overdue | | MVP |
+| Calendar | `/app/calendar` | Month/week/agenda; colour by state (upcoming/active/completed/overdue/critical); filters by type/user | | MVP |
+| Tasks | `/app/tasks` | My tasks / team; grouped by due; related-object links | | MVP |
+| Companies | `/app/crm/companies` | List + dedupe warnings | | MVP |
+| **Company 360°** | `/app/crm/companies/:id` | Contacts, open opportunities, active/upcoming/historical campaigns, revenue YTD, GM, latest important update, next task, documents, campaign map, activity timeline [R§36] | | MVP |
+| Contacts | `/app/crm/contacts` | | | MVP |
+| Pipeline | `/app/crm/pipeline` | Kanban by configurable stage; WON → Create Brief | | MVP |
+| Opportunity detail | `/app/crm/opportunities/:id` | | | MVP |
+| Marketing lists | `/app/crm/lists` | | | SHOULD / P2 |
+| Tariffs | `/app/commercial/tariffs` | Rule table with dimension filters, validity timeline, publish, revise, conflict/coverage report | | MVP |
+| Costs / Revenue / Margins | `/app/commercial?tab=…` | Line explorer; margin by campaign/client/period; billable items export | | MVP |
+| Reports | `/app/reports` | MVP: campaign report, operations SLA, margin report (tables + CSV). P2: dashboards/analytics | | MVP-lite |
+| AI Assistant panel | global | Chat with tool-backed answers, suggested prompts from [R§38] | | MVP |
+| Admin | `/app/admin/{users,roles,settings,nomenclatures,automation,areas,audit}` | | | MVP |
+| Platform (Super Admin) | `/platform/tenants` | Tenant list, create, suspend | | MVP-lite |
+
+## Client / Agency portal `/portal`
+| Screen | Purpose | Phase |
+|---|---|---|
+| Campaigns | Campaigns visible to my organisation; agency users can switch between end clients | MVP (basic) |
+| **Study review** | Per position: map, photo, Street View reference, support, distance, direction, buyer recommendation, observations → **Approve / Reject / Comment** [R§21]; "approve all remaining" with confirmation | MVP |
+| Campaign status | "Carrefour Sinaia — LIVE — 7/7 installed" + map + accepted photos/videos + period [R§37] | MVP (basic) |
+| Campaign report & downloads | PDF/Excel deliverables | P2 |
+
+## Decorator field app `/field` (PWA, mobile-first)
+| Screen | Purpose |
+|---|---|
+| Today | Jobs grouped by location: "Carrefour Sinaia — 7 installations", "Mega Image Bucharest — 3 repairs", "Pepco Ploiești — 5 removals" [R§24] |
+| Job | Map with all positions, "navigate" deep link (Google Maps app), instructions |
+| Position | GPS, current support photo, Street View reference, required material, arrow per face, service, special instructions → **Take photo / video** (camera), auto-captured user/time/GPS; per-item status; offline queue indicator |
+| Submit | Checklist of positions with evidence → submit job |
+No check-in/out, no signature, no background GPS tracking [R§24, R§46]. GPS is read only at the moment of capture.
+
+## Supplier portal `/portal` (P2)
+Production supplier: orders, artwork download, status updates. OOH supplier: supplied inventory and availability.
