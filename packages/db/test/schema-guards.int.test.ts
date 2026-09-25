@@ -43,6 +43,24 @@ describe('schema guards', () => {
     expect(rows).toEqual([]);
   });
 
+  it('SECURITY DEFINER functions pin search_path, are owned by ooh_auth and not executable by PUBLIC', async () => {
+    const rows = await sql<{ name: string; owner: string; config: string[] | null; public_exec: boolean }[]>`
+      SELECT p.proname AS name, r.rolname AS owner, p.proconfig AS config,
+             has_function_privilege('public', p.oid, 'EXECUTE') AS public_exec
+      FROM pg_proc p
+      JOIN pg_namespace n ON n.oid = p.pronamespace
+      JOIN pg_roles r ON r.oid = p.proowner
+      WHERE n.nspname = 'public' AND p.prosecdef`;
+    expect(rows.length).toBeGreaterThan(0);
+    for (const row of rows) {
+      expect(row.config ?? [], row.name).toEqual(
+        expect.arrayContaining([expect.stringMatching(/^search_path=/)]),
+      );
+      expect(row.owner, row.name).toBe('ooh_auth');
+      expect(row.public_exec, row.name).toBe(false);
+    }
+  });
+
   it('partitions are not directly accessible to the app role (RLS lives on the parent)', async () => {
     const rows = await sql<{ relname: string; accessible: boolean }[]>`
       SELECT t.relname,

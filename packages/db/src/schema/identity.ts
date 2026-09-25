@@ -22,6 +22,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  inet,
   unique,
   uuid,
 } from 'drizzle-orm/pg-core';
@@ -167,4 +168,34 @@ export const membershipRole = pgTable(
     }).onDelete('cascade'),
     index('membership_role_role_idx').on(t.tenantId, t.roleId),
   ],
+);
+
+/**
+ * Refresh tokens (rotating, one row per issued token). Not tenant-owned: it belongs to a user and
+ * records which tenant the session is currently in. Visible only in user mode to its own user (RLS).
+ * Only a SHA-256 hash of the high-entropy secret is stored.
+ */
+export const refreshToken = pgTable(
+  'refresh_token',
+  {
+    id: primaryId(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => appUser.id),
+    /** All tokens rotated from one login share a family; reuse of a rotated token revokes the family. */
+    familyId: uuid('family_id').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    activeTenantId: uuid('active_tenant_id')
+      .notNull()
+      .references(() => tenant.id),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    rotatedAt: timestamp('rotated_at', { withTimezone: true }),
+    replacedById: uuid('replaced_by_id'),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    revokedReason: text('revoked_reason'),
+    ip: inet('ip'),
+    userAgent: text('user_agent'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('refresh_token_family_idx').on(t.familyId), index('refresh_token_user_idx').on(t.userId)],
 );

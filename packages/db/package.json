@@ -22,6 +22,7 @@
     "db:seed": "node --env-file-if-exists=../../.env --import tsx src/scripts/seed.ts"
   },
   "devDependencies": {
+    "@node-rs/argon2": "2.2.1",
     "@testcontainers/postgresql": "11.14.0",
     "drizzle-kit": "0.31.11",
     "testcontainers": "11.14.0",
@@ -32,5 +33,15 @@
     "@ooh/contracts": "workspace:*",
     "drizzle-orm": "0.45.3",
     "postgres": "3.4.9"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
   }
 }

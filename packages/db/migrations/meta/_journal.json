@@ -22,6 +22,20 @@
       "when": 1790343235904,
       "tag": "0002_rls_grants_and_audit",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1790344216538,
+      "tag": "0003_refresh_tokens",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1790344217638,
+      "tag": "0004_auth_rls_and_login_lookup",
+      "breakpoints": true
     }
   ]
 }

@@ -16,3 +16,14 @@ BEGIN
   END IF;
 END
 $$;
+
+--   ooh_auth : NOLOGIN owner of the SECURITY DEFINER functions used before any user/tenant context
+--              exists (login lookup by email). BYPASSRLS, but it receives only the specific column
+--              privileges those functions need. Nobody can log in as it.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'ooh_auth') THEN
+    CREATE ROLE ooh_auth NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE BYPASSRLS;
+  END IF;
+END
+$$;
