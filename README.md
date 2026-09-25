@@ -1,6 +1,8 @@
 # OOH Operations Platform
 
-Multi-tenant platform for Out-of-Home advertising operations: CRM, briefs, campaigns, reusable OOH
+Multi-company software platform for managing Out-of-Home advertising operations.
+
+It covers CRM, briefs, campaigns, reusable OOH
 inventory, GIS research, studies and client approval, production, field operations, commercial engine
 and AI assistance. Architecture and product decisions: [docs/](docs/README.md).
 
@@ -58,3 +60,7 @@ Sign in at http://localhost:5173 with `admin@demo.local` / `demo-password-change
 - Every tenant-owned table: `tenant_id`, `UNIQUE (tenant_id, id)`, composite FKs, forced RLS. The
   schema-guard tests fail the build otherwise. See [docs/architecture/07-database.md](docs/architecture/07-database.md).
 - Environment variables: [docs/development/environment.md](docs/development/environment.md).
+
+## License
+
+MIT. See [LICENSE](LICENSE).
