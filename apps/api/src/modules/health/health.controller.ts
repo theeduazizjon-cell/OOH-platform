@@ -2,6 +2,7 @@ import { Controller, Get, Inject, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
 import { ENV } from '../../config/config.module';
 import { type Env } from '../../config/env';
+import { Public } from '../../core/auth/principal';
 import { DatabaseService } from '../../core/database/database.service';
 import { RedisService } from '../../core/redis/redis.service';
 
@@ -17,6 +18,7 @@ export interface HealthReport {
 }
 
 /** Liveness/readiness endpoint for local dev, load balancers and deploy checks. Public. */
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(

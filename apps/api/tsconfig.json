@@ -5,5 +5,5 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true
   },
-  "include": ["src", "*.config.ts"]
+  "include": ["src", "test", "*.config.ts"]
 }
