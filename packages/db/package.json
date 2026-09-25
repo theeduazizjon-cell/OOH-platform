@@ -1,0 +1,36 @@
+{
+  "name": "@ooh/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Database schema (Drizzle), SQL migrations incl. RLS policies, tenant transaction helpers, seeds.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "migrations",
+    "sql"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch --preserveWatchOutput",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:int": "vitest run --config vitest.int.config.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file-if-exists=../../.env --import tsx src/scripts/migrate.ts",
+    "db:seed": "node --env-file-if-exists=../../.env --import tsx src/scripts/seed.ts"
+  },
+  "devDependencies": {
+    "@testcontainers/postgresql": "11.14.0",
+    "drizzle-kit": "0.31.11",
+    "testcontainers": "11.14.0",
+    "tsx": "4.23.15",
+    "vitest": "3.2.7"
+  },
+  "dependencies": {
+    "@ooh/contracts": "workspace:*",
+    "drizzle-orm": "0.45.3",
+    "postgres": "3.4.9"
+  }
+}
