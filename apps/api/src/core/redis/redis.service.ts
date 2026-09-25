@@ -11,12 +11,16 @@ export class RedisService implements OnApplicationShutdown {
   private lastErrorLoggedAt = 0;
 
   constructor(@Inject(ENV) env: Env) {
-    this.client = new Redis(env.REDIS_URL, { lazyConnect: true, maxRetriesPerRequest: 1 });
+    // Connect eagerly and reconnect in the background. With the offline queue disabled, commands
+    // fail immediately while Redis is unreachable instead of waiting on reconnects, so callers
+    // that degrade gracefully (login throttle, health) stay fast during an outage.
+    this.client = new Redis(env.REDIS_URL, { enableOfflineQueue: false, maxRetriesPerRequest: 1 });
     // Without a listener ioredis prints "Unhandled error event" on every reconnect attempt.
     this.client.on('error', (error: Error) => {
       if (Date.now() - this.lastErrorLoggedAt > 30_000) {
         this.lastErrorLoggedAt = Date.now();
-        this.logger.warn(`Redis error: ${error.message}`);
+        const code = (error as NodeJS.ErrnoException).code;
+        this.logger.warn(`Redis error: ${error.message || code || error.name}`);
       }
     });
   }
