@@ -1,0 +1,10 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Well-known local-development credentials (never used outside docker compose / tests)"
+paths = [
+  '''\.env\.example$''',
+  '''infrastructure/docker/docker-compose\.yml$''',
+  '''packages/db/sql/bootstrap-roles\.sql$''',
+]
