@@ -1,0 +1,43 @@
+# Local development infrastructure.  Start: pnpm infra:up   Stop: pnpm infra:down   Wipe data: pnpm infra:reset
+name: ooh-platform
+
+services:
+  postgres:
+    # Keep in sync with packages/db/test/global-setup.ts (POSTGIS_IMAGE).
+    image: postgis/postgis:18-3.6
+    environment:
+      POSTGRES_USER: ooh # schema owner: runs migrations (MIGRATION_DATABASE_URL)
+      POSTGRES_PASSWORD: ooh
+      POSTGRES_DB: ooh
+    ports:
+      - '5432:5432'
+    volumes:
+      # PostgreSQL 18 images keep data under /var/lib/postgresql/<major>/, so mount the parent.
+      - pgdata:/var/lib/postgresql
+      # Creates the restricted runtime role `ooh_app` on first start (DATABASE_URL).
+      - ../../packages/db/sql/bootstrap-roles.sql:/docker-entrypoint-initdb.d/01-bootstrap-roles.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ooh -d ooh']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mailpit:
+    # Catches all outgoing email in development. Web UI: http://localhost:8025
+    image: axllent/mailpit:latest
+    ports:
+      - '1025:1025'
+      - '8025:8025'
+
+volumes:
+  pgdata:
