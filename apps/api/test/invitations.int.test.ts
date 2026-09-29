@@ -5,6 +5,7 @@
 import { type NestFastifyApplication } from '@nestjs/platform-fastify';
 import {
   type AuthSession,
+  etagOf,
   type InvitationPreview,
   type InviteMemberResponse,
   type IssuedInvitation,
@@ -118,8 +119,18 @@ async function tokenFor(who: keyof typeof users, tenantId?: string, password = P
 const invite = (token: string, payload: Record<string, unknown>) =>
   app.inject({ method: 'POST', url: '/api/v1/memberships', headers: bearer(token), payload });
 
-const membershipAction = (token: string, id: string, action: string) =>
-  app.inject({ method: 'POST', url: `/api/v1/memberships/${id}/actions/${action}`, headers: bearer(token) });
+/** Sends If-Match with the member's current version (`*` when it no longer exists). */
+async function membershipAction(token: string, id: string, action: string) {
+  const [row] = await owner.db
+    .select({ version: membership.version })
+    .from(membership)
+    .where(eq(membership.id, id));
+  return app.inject({
+    method: 'POST',
+    url: `/api/v1/memberships/${id}/actions/${action}`,
+    headers: { ...bearer(token), 'if-match': row ? etagOf(row.version) : '*' },
+  });
+}
 
 const preview = (token: string) => app.inject({ method: 'GET', url: `/api/v1/auth/invitations/${token}` });
 

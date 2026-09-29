@@ -18,6 +18,7 @@ import { TokenService } from '../../core/auth/token.service';
 import { DatabaseService } from '../../core/database/database.service';
 import { AppError } from '../../core/http/app-error';
 import { type ClientInfo } from '../../core/http/client-info';
+import { assertIfMatch, type IfMatch } from '../../core/http/concurrency';
 import { loadAssignableRoles } from './role-assignment';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -84,7 +85,7 @@ export class InvitationsService {
           .insert(membership)
           .values({ tenantId: principal.tenantId, userId, kind: 'INTERNAL', status: 'INVITED' })
           .onConflictDoNothing({ target: [membership.tenantId, membership.userId] })
-          .returning({ id: membership.id });
+          .returning({ id: membership.id, version: membership.version });
         if (!created) {
           const [existing] = await tx
             .select({ id: membership.id, status: membership.status })
@@ -132,6 +133,7 @@ export class InvitationsService {
             status: 'INVITED',
             roles: roles.map(({ id, key, name }) => ({ id, key, name })),
             invitation: { expiresAt: issued.expiresAt },
+            version: created.version,
           },
           invitation: issued,
         };
@@ -140,11 +142,23 @@ export class InvitationsService {
   }
 
   /** Revokes the pending link (if any) and issues a new one with a fresh expiry. */
-  async resend(principal: Principal, membershipId: string, client: ClientInfo): Promise<IssuedInvitation> {
+  async resend(
+    principal: Principal,
+    membershipId: string,
+    ifMatch: IfMatch,
+    client: ClientInfo,
+  ): Promise<IssuedInvitation> {
     return this.database.withTenant(
       { tenantId: principal.tenantId, actorUserId: principal.userId },
       async (tx) => {
         const member = await this.lockInvitedMembership(tx, membershipId);
+        assertIfMatch(ifMatch, member.version);
+        // A new link changes the member (its pending invitation): a second admin resending from a
+        // stale view gets 412 instead of silently invalidating the link just shared.
+        await tx
+          .update(membership)
+          .set({ version: sql`${membership.version} + 1` })
+          .where(eq(membership.id, membershipId));
         await this.revokePending(tx, membershipId);
         const issued = await this.issue(tx, principal, membershipId, member.email);
         await this.audit.record(tx, {
@@ -163,11 +177,17 @@ export class InvitationsService {
   }
 
   /** Withdraws an invitation that was never accepted: the INVITED membership is removed entirely. */
-  async cancel(principal: Principal, membershipId: string, client: ClientInfo): Promise<void> {
+  async cancel(
+    principal: Principal,
+    membershipId: string,
+    ifMatch: IfMatch,
+    client: ClientInfo,
+  ): Promise<void> {
     await this.database.withTenant(
       { tenantId: principal.tenantId, actorUserId: principal.userId },
       async (tx) => {
         const member = await this.lockInvitedMembership(tx, membershipId);
+        assertIfMatch(ifMatch, member.version);
         // Cascades to membership_role and invitation rows.
         await tx.delete(membership).where(eq(membership.id, membershipId));
         await this.audit.record(tx, {
@@ -240,7 +260,7 @@ export class InvitationsService {
 
       const [activated] = await tx
         .update(membership)
-        .set({ status: 'ACTIVE' })
+        .set({ status: 'ACTIVE', version: sql`${membership.version} + 1` })
         .where(and(eq(membership.id, found.membership_id), eq(membership.status, 'INVITED')))
         .returning({ id: membership.id });
       if (!activated) throw INVALID_INVITATION();
@@ -277,9 +297,12 @@ export class InvitationsService {
 
   // ── internals ──────────────────────────────────────────────────────────────
 
-  private async lockInvitedMembership(tx: Transaction, membershipId: string): Promise<{ email: string }> {
+  private async lockInvitedMembership(
+    tx: Transaction,
+    membershipId: string,
+  ): Promise<{ email: string; version: number }> {
     const [member] = await tx
-      .select({ status: membership.status, email: appUser.email })
+      .select({ status: membership.status, email: appUser.email, version: membership.version })
       .from(membership)
       .innerJoin(appUser, eq(appUser.id, membership.userId))
       .where(eq(membership.id, membershipId))

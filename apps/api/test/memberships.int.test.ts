@@ -7,7 +7,9 @@ import { type NestFastifyApplication } from '@nestjs/platform-fastify';
 import {
   type AuthSession,
   CSRF_HEADER,
+  etagOf,
   type MembershipListItem,
+  type Page,
   type MeResponse,
   REFRESH_COOKIE_NAME,
 } from '@ooh/contracts';
@@ -36,7 +38,17 @@ let app: NestFastifyApplication;
 let owner: DatabaseConnection;
 let tenantA: string;
 let tenantB: string;
-const USERS = ['admin', 'admin2', 'manager', 'reader', 'viewer', 'target', 'roleTarget', 'adminB'] as const;
+const USERS = [
+  'admin',
+  'admin2',
+  'manager',
+  'reader',
+  'viewer',
+  'target',
+  'roleTarget',
+  'conflict',
+  'adminB',
+] as const;
 type UserName = (typeof USERS)[number];
 const users = {} as Record<UserName, string>;
 const members = {} as Record<UserName, string>;
@@ -91,6 +103,7 @@ beforeAll(async () => {
   await addMember(tenantA, 'viewer', 'viewer');
   await addMember(tenantA, 'target', 'ooh_buyer');
   await addMember(tenantA, 'roleTarget', 'ooh_buyer');
+  await addMember(tenantA, 'conflict', 'ooh_buyer');
   await addMember(tenantB, 'adminB', 'company_admin');
   for (const key of ['viewer', 'ooh_buyer', 'company_admin', 'end_client', 'reader'])
     roleIds[key] = await roleId(tenantA, key);
@@ -122,18 +135,30 @@ async function sessionOf(who: UserName) {
 }
 const tokenFor = async (who: UserName) => (await sessionOf(who)).token;
 
-const action = (token: string, who: UserName, name: 'suspend' | 'reactivate') =>
+/** If-Match for the member's current version, as a client that just read it would send. */
+async function currentEtag(membershipId: string): Promise<string> {
+  const [row] = await owner.db
+    .select({ version: membership.version })
+    .from(membership)
+    .where(eq(membership.id, membershipId));
+  return row ? etagOf(row.version) : '*';
+}
+
+const postAction = async (token: string, membershipId: string, name: string, ifMatch?: string) =>
   app.inject({
     method: 'POST',
-    url: `/api/v1/memberships/${members[who]}/actions/${name}`,
-    headers: bearer(token),
+    url: `/api/v1/memberships/${membershipId}/actions/${name}`,
+    headers: { ...bearer(token), 'if-match': ifMatch ?? (await currentEtag(membershipId)) },
   });
 
-const setRoles = (token: string, membershipId: string, ids: (string | undefined)[]) =>
+const action = (token: string, who: UserName, name: 'suspend' | 'reactivate') =>
+  postAction(token, members[who], name);
+
+const setRoles = async (token: string, membershipId: string, ids: (string | undefined)[]) =>
   app.inject({
     method: 'PUT',
     url: `/api/v1/memberships/${membershipId}/roles`,
-    headers: bearer(token),
+    headers: { ...bearer(token), 'if-match': await currentEtag(membershipId) },
     payload: { roleIds: ids },
   });
 
@@ -279,13 +304,122 @@ describe('guardrails', () => {
       payload: { email: email('pending'), displayName: 'Pending', roleIds: [roleIds.viewer] },
     });
     const id = invited.json<{ membership: { id: string } }>().membership.id;
-    const response = await app.inject({
-      method: 'POST',
-      url: `/api/v1/memberships/${id}/actions/suspend`,
-      headers: bearer(admin),
-    });
+    const response = await postAction(admin, id, 'suspend');
     expect(response.statusCode).toBe(409);
     // Roles of a pending invitation can still be corrected before it is accepted.
     expect((await setRoles(admin, id, [roleIds.ooh_buyer])).statusCode).toBe(200);
+  });
+});
+
+describe('edit conflicts (ETag / If-Match)', () => {
+  const versionInList = async (token: string, membershipId: string) => {
+    const list = await app.inject({ method: 'GET', url: '/api/v1/memberships', headers: bearer(token) });
+    return list.json<Page<MembershipListItem>>().data.find((m) => m.id === membershipId)!.version;
+  };
+  const putRoles = (token: string, membershipId: string, ids: string[], ifMatch?: string) =>
+    app.inject({
+      method: 'PUT',
+      url: `/api/v1/memberships/${membershipId}/roles`,
+      headers: { ...bearer(token), ...(ifMatch === undefined ? {} : { 'if-match': ifMatch }) },
+      payload: { roleIds: ids },
+    });
+  const statusOf = async (membershipId: string) =>
+    (await owner.db.select().from(membership).where(eq(membership.id, membershipId)))[0]!.status;
+
+  it('list items carry the version; every change returns the next one as ETag', async () => {
+    const admin = await tokenFor('admin');
+    const v = await versionInList(admin, members.conflict);
+
+    const suspended = await postAction(admin, members.conflict, 'suspend', etagOf(v));
+    expect(suspended.statusCode).toBe(200);
+    expect(suspended.headers.etag).toBe(etagOf(v + 1));
+    expect(suspended.json<MembershipListItem>().version).toBe(v + 1);
+
+    const reactivated = await postAction(admin, members.conflict, 'reactivate', etagOf(v + 1));
+    expect(reactivated.headers.etag).toBe(etagOf(v + 2));
+
+    const changed = await putRoles(admin, members.conflict, [roleIds.viewer!], etagOf(v + 2));
+    expect(changed.statusCode).toBe(200);
+    expect(changed.headers.etag).toBe(etagOf(v + 3));
+    expect(await versionInList(admin, members.conflict)).toBe(v + 3);
+  });
+
+  it('a change based on a stale read is refused with 412 and changes nothing', async () => {
+    // Two admins open the Users page and see the same version…
+    const admin = await tokenFor('admin');
+    const admin2 = await tokenFor('admin2');
+    const seen = await versionInList(admin2, members.conflict);
+
+    // …the first changes the roles, then the second tries to suspend from the stale view.
+    expect((await putRoles(admin, members.conflict, [roleIds.ooh_buyer!], etagOf(seen))).statusCode).toBe(
+      200,
+    );
+    const stale = await postAction(admin2, members.conflict, 'suspend', etagOf(seen));
+    expect(stale.statusCode).toBe(412);
+    expect(code(stale)).toBe('PRECONDITION_FAILED');
+    expect(stale.json<{ meta: { etag: string } }>().meta.etag).toBe(etagOf(seen + 1));
+    expect(await statusOf(members.conflict)).toBe('ACTIVE');
+    expect(await auditOf('membership.suspended', members.conflict)).toHaveLength(1); // only the earlier test's
+
+    const staleRoles = await putRoles(admin2, members.conflict, [roleIds.viewer!], etagOf(seen));
+    expect(staleRoles.statusCode).toBe(412);
+  });
+
+  it('requires If-Match (428), rejects malformed ones (400) and accepts *', async () => {
+    const admin = await tokenFor('admin');
+    const missing = await putRoles(admin, members.conflict, [roleIds.viewer!]);
+    expect(missing.statusCode).toBe(428);
+    expect(code(missing)).toBe('PRECONDITION_REQUIRED');
+    const noHeader = await app.inject({
+      method: 'POST',
+      url: `/api/v1/memberships/${members.conflict}/actions/suspend`,
+      headers: bearer(admin),
+    });
+    expect(noHeader.statusCode).toBe(428);
+
+    expect((await putRoles(admin, members.conflict, [roleIds.viewer!], 'v3')).statusCode).toBe(400);
+    // A weak tag never matches under If-Match's strong comparison.
+    const version = await versionInList(admin, members.conflict);
+    expect(
+      (await putRoles(admin, members.conflict, [roleIds.viewer!], `W/${etagOf(version)}`)).statusCode,
+    ).toBe(412);
+    expect((await putRoles(admin, members.conflict, [roleIds.viewer!], '*')).statusCode).toBe(200);
+  });
+
+  it('other refusals come first (RFC 9110): a stale client still learns the real reason', async () => {
+    const admin = await tokenFor('admin');
+    // Already active → 409, not 412, even with an outdated tag.
+    const reactivate = await postAction(admin, members.conflict, 'reactivate', etagOf(0));
+    expect(reactivate.statusCode).toBe(409);
+    // Acting on yourself → 403; another tenant's member → 404.
+    expect((await postAction(admin, members.admin, 'suspend', etagOf(0))).statusCode).toBe(403);
+    const adminB = await tokenFor('adminB');
+    expect((await postAction(adminB, members.conflict, 'suspend', etagOf(0))).statusCode).toBe(404);
+  });
+
+  it('two admins resending the same invitation: the second gets 412 and the first link keeps working', async () => {
+    const admin = await tokenFor('admin');
+    const admin2 = await tokenFor('admin2');
+    const invited = await app.inject({
+      method: 'POST',
+      url: '/api/v1/memberships',
+      headers: bearer(admin),
+      payload: { email: email('racing'), displayName: 'Racing', roleIds: [roleIds.viewer] },
+    });
+    const { membership: created } = invited.json<{ membership: MembershipListItem }>();
+    expect(created.version).toBe(1);
+
+    const first = await postAction(admin, created.id, 'resend-invitation', etagOf(1));
+    expect(first.statusCode).toBe(200);
+    const second = await postAction(admin2, created.id, 'resend-invitation', etagOf(1));
+    expect(second.statusCode).toBe(412);
+    const link = first.json<{ token: string }>().token;
+    expect((await app.inject({ method: 'GET', url: `/api/v1/auth/invitations/${link}` })).statusCode).toBe(
+      200,
+    );
+
+    // Cancelling needs the current version too.
+    expect((await postAction(admin2, created.id, 'cancel-invitation', etagOf(1))).statusCode).toBe(412);
+    expect((await postAction(admin2, created.id, 'cancel-invitation', etagOf(2))).statusCode).toBe(204);
   });
 });

@@ -8,6 +8,7 @@ import { type Principal } from '../../core/auth/principal';
 import { DatabaseService } from '../../core/database/database.service';
 import { AppError } from '../../core/http/app-error';
 import { type ClientInfo } from '../../core/http/client-info';
+import { assertIfMatch, type IfMatch } from '../../core/http/concurrency';
 import { decodeIdCursor, encodeIdCursor } from '../../core/http/cursor';
 import { assertCanManageMember, loadAssignableRoles } from './role-assignment';
 
@@ -36,8 +37,13 @@ export class MembershipsService {
     });
   }
 
-  suspend(principal: Principal, membershipId: string, client: ClientInfo): Promise<MembershipListItem> {
-    return this.transition(principal, membershipId, client, {
+  suspend(
+    principal: Principal,
+    membershipId: string,
+    ifMatch: IfMatch,
+    client: ClientInfo,
+  ): Promise<MembershipListItem> {
+    return this.transition(principal, membershipId, ifMatch, client, {
       from: 'ACTIVE',
       to: 'SUSPENDED',
       action: 'membership.suspended',
@@ -45,8 +51,13 @@ export class MembershipsService {
     });
   }
 
-  reactivate(principal: Principal, membershipId: string, client: ClientInfo): Promise<MembershipListItem> {
-    return this.transition(principal, membershipId, client, {
+  reactivate(
+    principal: Principal,
+    membershipId: string,
+    ifMatch: IfMatch,
+    client: ClientInfo,
+  ): Promise<MembershipListItem> {
+    return this.transition(principal, membershipId, ifMatch, client, {
       from: 'SUSPENDED',
       to: 'ACTIVE',
       action: 'membership.reactivated',
@@ -62,6 +73,7 @@ export class MembershipsService {
     principal: Principal,
     membershipId: string,
     input: SetMemberRolesRequest,
+    ifMatch: IfMatch,
     client: ClientInfo,
   ): Promise<MembershipListItem> {
     let affectedUserId: string | undefined;
@@ -69,6 +81,8 @@ export class MembershipsService {
       const target = await this.lockManageable(tx, principal, membershipId, 'change your own roles');
       affectedUserId = target.userId;
       const roles = await loadAssignableRoles(tx, principal, input.roleIds);
+      // After the 404/403/422 checks (RFC 9110 §13.2.1): a stale client still learns the real reason.
+      assertIfMatch(ifMatch, target.version);
 
       const before = await this.loadItem(tx, membershipId);
       const fromKeys = before.roles.map((r) => r.key).sort();
@@ -81,7 +95,7 @@ export class MembershipsService {
         .values(roles.map((r) => ({ tenantId: principal.tenantId, membershipId, roleId: r.id })));
       await tx
         .update(membership)
-        .set({ permsVersion: sql`${membership.permsVersion} + 1` })
+        .set({ permsVersion: sql`${membership.permsVersion} + 1`, version: sql`${membership.version} + 1` })
         .where(eq(membership.id, membershipId));
       await this.audit.record(tx, {
         tenantId: principal.tenantId,
@@ -105,6 +119,7 @@ export class MembershipsService {
   private async transition(
     principal: Principal,
     membershipId: string,
+    ifMatch: IfMatch,
     client: ClientInfo,
     rule: { from: MembershipStatus; to: MembershipStatus; action: string; refusal: string },
   ): Promise<MembershipListItem> {
@@ -115,11 +130,16 @@ export class MembershipsService {
       if (target.status !== rule.from) {
         throw new AppError('INVALID_TRANSITION', rule.refusal, { meta: { status: target.status } });
       }
-      // The version bump also retires access tokens issued before a suspension, so reactivating
-      // never revives an old token.
+      assertIfMatch(ifMatch, target.version);
+      // The perms_version bump also retires access tokens issued before a suspension, so
+      // reactivating never revives an old token.
       await tx
         .update(membership)
-        .set({ status: rule.to, permsVersion: sql`${membership.permsVersion} + 1` })
+        .set({
+          status: rule.to,
+          permsVersion: sql`${membership.permsVersion} + 1`,
+          version: sql`${membership.version} + 1`,
+        })
         .where(eq(membership.id, membershipId));
       await this.audit.record(tx, {
         tenantId: principal.tenantId,
@@ -149,9 +169,14 @@ export class MembershipsService {
     principal: Principal,
     membershipId: string,
     selfAction: string,
-  ): Promise<{ userId: string; status: MembershipStatus }> {
+  ): Promise<{ userId: string; status: MembershipStatus; version: number }> {
     const [target] = await tx
-      .select({ id: membership.id, userId: membership.userId, status: membership.status })
+      .select({
+        id: membership.id,
+        userId: membership.userId,
+        status: membership.status,
+        version: membership.version,
+      })
       .from(membership)
       .where(and(eq(membership.id, membershipId), isNull(membership.archivedAt)))
       .for('update');
@@ -187,6 +212,7 @@ export class MembershipsService {
         email: appUser.email,
         kind: membership.kind,
         status: membership.status,
+        version: membership.version,
         invitationExpiresAt: invitation.expiresAt,
       })
       .from(membership)

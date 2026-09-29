@@ -21,8 +21,11 @@ export const ERROR_CODES = {
   TARIFF_DUPLICATE: 409,
   TARIFF_AMBIGUOUS: 409,
   DUPLICATE_SUSPECTED: 409,
+  /** If-Match didn't match: the resource changed since the client read it. */
   PRECONDITION_FAILED: 412,
   PAYLOAD_TOO_LARGE: 413,
+  /** The request must be conditional (If-Match) and wasn't. */
+  PRECONDITION_REQUIRED: 428,
   RATE_LIMITED: 429,
   INTERNAL_ERROR: 500,
   SERVICE_UNAVAILABLE: 503,

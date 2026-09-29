@@ -1,4 +1,16 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseInterceptors,
+} from '@nestjs/common';
 import {
   type InviteMemberResponse,
   inviteMemberRequestSchema,
@@ -11,11 +23,17 @@ import {
 import type { FastifyRequest } from 'fastify';
 import { CurrentPrincipal, type Principal, RequirePermission } from '../../core/auth/principal';
 import { clientInfo } from '../../core/http/client-info';
+import { type IfMatch, IfMatchHeader, VersionEtagInterceptor } from '../../core/http/concurrency';
 import { parseWith } from '../../core/http/validation';
 import { InvitationsService } from './invitations.service';
 import { MembershipsService } from './memberships.service';
 
+/**
+ * Changes to an existing member require `If-Match` with the member's version (list items carry
+ * `version`; single-member responses carry `ETag`): 428 without it, 412 when it is stale.
+ */
 @Controller('memberships')
+@UseInterceptors(VersionEtagInterceptor)
 export class MembershipsController {
   constructor(
     private readonly memberships: MembershipsService,
@@ -50,9 +68,10 @@ export class MembershipsController {
   resendInvitation(
     @CurrentPrincipal() principal: Principal,
     @Param('id', ParseUUIDPipe) id: string,
+    @IfMatchHeader() ifMatch: IfMatch,
     @Req() request: FastifyRequest,
   ): Promise<IssuedInvitation> {
-    return this.invitations.resend(principal, id, clientInfo(request));
+    return this.invitations.resend(principal, id, ifMatch, clientInfo(request));
   }
 
   @Post(':id/actions/cancel-invitation')
@@ -61,9 +80,10 @@ export class MembershipsController {
   cancelInvitation(
     @CurrentPrincipal() principal: Principal,
     @Param('id', ParseUUIDPipe) id: string,
+    @IfMatchHeader() ifMatch: IfMatch,
     @Req() request: FastifyRequest,
   ): Promise<void> {
-    return this.invitations.cancel(principal, id, clientInfo(request));
+    return this.invitations.cancel(principal, id, ifMatch, clientInfo(request));
   }
 
   @Post(':id/actions/suspend')
@@ -72,9 +92,10 @@ export class MembershipsController {
   suspend(
     @CurrentPrincipal() principal: Principal,
     @Param('id', ParseUUIDPipe) id: string,
+    @IfMatchHeader() ifMatch: IfMatch,
     @Req() request: FastifyRequest,
   ): Promise<MembershipListItem> {
-    return this.memberships.suspend(principal, id, clientInfo(request));
+    return this.memberships.suspend(principal, id, ifMatch, clientInfo(request));
   }
 
   @Post(':id/actions/reactivate')
@@ -83,9 +104,10 @@ export class MembershipsController {
   reactivate(
     @CurrentPrincipal() principal: Principal,
     @Param('id', ParseUUIDPipe) id: string,
+    @IfMatchHeader() ifMatch: IfMatch,
     @Req() request: FastifyRequest,
   ): Promise<MembershipListItem> {
-    return this.memberships.reactivate(principal, id, clientInfo(request));
+    return this.memberships.reactivate(principal, id, ifMatch, clientInfo(request));
   }
 
   /** Replaces the member's roles (the member's sessions pick up the change on their next request). */
@@ -95,12 +117,14 @@ export class MembershipsController {
     @CurrentPrincipal() principal: Principal,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: unknown,
+    @IfMatchHeader() ifMatch: IfMatch,
     @Req() request: FastifyRequest,
   ): Promise<MembershipListItem> {
     return this.memberships.setRoles(
       principal,
       id,
       parseWith(setMemberRolesRequestSchema, body),
+      ifMatch,
       clientInfo(request),
     );
   }
