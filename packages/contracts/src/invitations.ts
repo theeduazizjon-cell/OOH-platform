@@ -5,7 +5,7 @@
  */
 import { z } from 'zod';
 import type { MembershipListItem } from './auth';
-import { PASSWORD_MAX_LENGTH } from './auth';
+import { memberRoleIdsSchema, PASSWORD_MAX_LENGTH } from './auth';
 
 /** How long an invitation link stays valid. Resending issues a fresh link. */
 export const INVITATION_TTL_DAYS = 7;
@@ -16,11 +16,7 @@ export const INVITATION_ACCEPT_PATH = '/invite';
 export const inviteMemberRequestSchema = z.object({
   email: z.email().max(254),
   displayName: z.string().trim().min(1).max(120),
-  roleIds: z
-    .array(z.uuid())
-    .min(1)
-    .max(10)
-    .refine((ids) => new Set(ids).size === ids.length, 'Role ids must be unique'),
+  roleIds: memberRoleIdsSchema,
 });
 export type InviteMemberRequest = z.infer<typeof inviteMemberRequestSchema>;
 

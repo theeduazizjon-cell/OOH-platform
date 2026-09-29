@@ -70,7 +70,7 @@ export interface MembershipListItem {
   email: string;
   kind: 'INTERNAL' | 'EXTERNAL';
   status: 'INVITED' | 'ACTIVE' | 'SUSPENDED';
-  roles: { key: string; name: string }[];
+  roles: { id: string; key: string; name: string }[];
   /** The pending invitation of an INVITED member (null once accepted, or when none is pending). */
   invitation: { expiresAt: string } | null;
 }
@@ -86,3 +86,14 @@ export interface RoleListItem {
   isExternal: boolean;
   active: boolean;
 }
+
+/** Roles given to a member (invitation or role change): 1–10 distinct role ids of the tenant. */
+export const memberRoleIdsSchema = z
+  .array(z.uuid())
+  .min(1)
+  .max(10)
+  .refine((ids) => new Set(ids).size === ids.length, 'Role ids must be unique');
+
+/** PUT /memberships/{id}/roles: replaces the member's roles. */
+export const setMemberRolesRequestSchema = z.object({ roleIds: memberRoleIdsSchema });
+export type SetMemberRolesRequest = z.infer<typeof setMemberRolesRequestSchema>;

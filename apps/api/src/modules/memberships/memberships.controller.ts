@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, Req } from '@nestjs/common';
 import {
   type InviteMemberResponse,
   inviteMemberRequestSchema,
@@ -6,6 +6,7 @@ import {
   type MembershipListItem,
   type Page,
   pageQuerySchema,
+  setMemberRolesRequestSchema,
 } from '@ooh/contracts';
 import type { FastifyRequest } from 'fastify';
 import { CurrentPrincipal, type Principal, RequirePermission } from '../../core/auth/principal';
@@ -63,5 +64,44 @@ export class MembershipsController {
     @Req() request: FastifyRequest,
   ): Promise<void> {
     return this.invitations.cancel(principal, id, clientInfo(request));
+  }
+
+  @Post(':id/actions/suspend')
+  @HttpCode(200)
+  @RequirePermission('users.suspend')
+  suspend(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: FastifyRequest,
+  ): Promise<MembershipListItem> {
+    return this.memberships.suspend(principal, id, clientInfo(request));
+  }
+
+  @Post(':id/actions/reactivate')
+  @HttpCode(200)
+  @RequirePermission('users.suspend')
+  reactivate(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() request: FastifyRequest,
+  ): Promise<MembershipListItem> {
+    return this.memberships.reactivate(principal, id, clientInfo(request));
+  }
+
+  /** Replaces the member's roles (the member's sessions pick up the change on their next request). */
+  @Put(':id/roles')
+  @RequirePermission('users.update')
+  setRoles(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ): Promise<MembershipListItem> {
+    return this.memberships.setRoles(
+      principal,
+      id,
+      parseWith(setMemberRolesRequestSchema, body),
+      clientInfo(request),
+    );
   }
 }
