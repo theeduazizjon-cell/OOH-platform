@@ -95,8 +95,11 @@ Comments (`comment.visibility = INTERNAL | EXTERNAL`): external users only ever 
    policies simple and fast. It stays in the repository layer and is covered by authorization tests.
 4. **Serializer redaction**: internal-only fields are stripped for principals lacking `commercial.*.read`.
 5. **State-machine guards**: each transition declares its required permission (see 06).
-6. **No privilege escalation**: whoever assigns roles (invitations now, role changes later) may only hand out
-   permissions they hold themselves, at the same or a narrower scope. Enforced in the API.
+6. **No privilege escalation**: whoever assigns roles (invitations, role changes) may only hand out
+   permissions they hold themselves, at the same or a narrower scope. Likewise, a member may only be managed
+   (suspended, reactivated, given new roles) by someone who holds every permission that member has, so a limited
+   user administrator can't act on a Company Admin. Nobody manages their own membership, so a tenant can't lock
+   out its last administrator this way. Enforced in the API.
 
 ## 6. Portal access (external)
 
