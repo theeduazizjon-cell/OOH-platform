@@ -8,6 +8,8 @@ import { DatabaseModule } from './core/database/database.module';
 import { REQUEST_ID_HEADER } from './core/http/request-id';
 import { RedisModule } from './core/redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { TenantConfigModule } from './modules/config/config.module';
+import { CrmModule } from './modules/crm/crm.module';
 import { HealthModule } from './modules/health/health.module';
 import { MembershipsModule } from './modules/memberships/memberships.module';
 import { RolesModule } from './modules/roles/roles.module';
@@ -42,6 +44,8 @@ export class AppModule {
         AuthModule,
         MembershipsModule,
         RolesModule,
+        TenantConfigModule,
+        CrmModule,
       ],
     };
   }

@@ -1,5 +1,6 @@
 export * from './auth';
 export * from './concurrency';
+export * from './crm';
 export * from './errors';
 export * from './invitations';
 export * from './pagination';

@@ -33,7 +33,8 @@ export async function createTestApp(
 ): Promise<NestFastifyApplication> {
   const env = loadEnv({
     NODE_ENV: 'test',
-    LOG_LEVEL: 'silent',
+    // TEST_LOG_LEVEL=error shows the server side of unexpected 500s while debugging a test.
+    LOG_LEVEL: process.env.TEST_LOG_LEVEL ?? 'silent',
     DATABASE_URL: inject('appUrl'),
     REDIS_URL: 'redis://localhost:1',
     JWT_SECRET: 'integration-secret-integration-secret-1',
