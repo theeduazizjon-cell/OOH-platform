@@ -2,11 +2,14 @@
 
 ## Progress
 
-| Step                    | Stories                                      | Status                                           |
-| ----------------------- | -------------------------------------------- | ------------------------------------------------ |
-| Step 1 — foundation     | S1–S8, S12, S13                              | ✅ done 2026-09-25 (branch `feat/m0-foundation`) |
-| Step 2 — authentication | S9–S11                                       | ✅ done 2026-09-25 (branch `feat/m1-auth`)       |
-| Step 3 — M1 second half | invitations, roles admin, user management UI | next                                             |
+| Step                      | Stories                                          | Status                                            |
+| ------------------------- | ------------------------------------------------ | ------------------------------------------------- |
+| Step 1 — foundation       | S1–S8, S12, S13                                  | ✅ done 2026-09-25 (branch `feat/m0-foundation`)  |
+| Step 2 — authentication   | S9–S11                                           | ✅ done 2026-09-25 (branch `feat/m1-auth`)        |
+| Step 3a — invitations API | invite, resend, cancel, preview, accept          | ✅ done 2026-09-29 (branch `feat/m1-invitations`) |
+| Step 3b — invitations UI  | invite dialog, pending invites, `/invite/:token` | next                                              |
+| Step 3c — user management | suspend/reactivate, change roles (API + UI)      | planned                                           |
+| Step 3d — roles admin     | roles & permissions screens (API + UI)           | planned                                           |
 
 Deviations from the plan: `packages/config` was dropped (root-level tooling configs); PostgreSQL 18 instead
 of 16 (native `uuidv7()`); object storage (MinIO) deferred to M4 since MinIO's community distribution
