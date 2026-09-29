@@ -2,14 +2,14 @@
 
 ## Progress
 
-| Step                      | Stories                                          | Status                                               |
-| ------------------------- | ------------------------------------------------ | ---------------------------------------------------- |
-| Step 1 — foundation       | S1–S8, S12, S13                                  | ✅ done 2026-09-25 (branch `feat/m0-foundation`)     |
-| Step 2 — authentication   | S9–S11                                           | ✅ done 2026-09-25 (branch `feat/m1-auth`)           |
-| Step 3a — invitations API | invite, resend, cancel, preview, accept          | ✅ done 2026-09-29 (branch `feat/m1-invitations`)    |
-| Step 3b — invitations UI  | invite dialog, pending invites, `/invite/:token` | ✅ done 2026-09-29 (branch `feat/m1-invitations-ui`) |
-| Step 3c — user management | suspend/reactivate, change roles (API + UI)      | next                                                 |
-| Step 3d — roles admin     | roles & permissions screens (API + UI)           | planned                                              |
+| Step                      | Stories                                          | Status                                                |
+| ------------------------- | ------------------------------------------------ | ----------------------------------------------------- |
+| Step 1 — foundation       | S1–S8, S12, S13                                  | ✅ done 2026-09-25 (branch `feat/m0-foundation`)      |
+| Step 2 — authentication   | S9–S11                                           | ✅ done 2026-09-25 (branch `feat/m1-auth`)            |
+| Step 3a — invitations API | invite, resend, cancel, preview, accept          | ✅ done 2026-09-29 (branch `feat/m1-invitations`)     |
+| Step 3b — invitations UI  | invite dialog, pending invites, `/invite/:token` | ✅ done 2026-09-29 (branch `feat/m1-invitations-ui`)  |
+| Step 3c — user management | suspend/reactivate, change roles (API + UI)      | ✅ done 2026-09-29 (branch `feat/m1-user-management`) |
+| Step 3d — roles admin     | roles & permissions screens (API + UI)           | ✅ done 2026-09-29 (branch `feat/m1-user-management`) |
 
 Deviations from the plan: `packages/config` was dropped (root-level tooling configs); PostgreSQL 18 instead
 of 16 (native `uuidv7()`); object storage (MinIO) deferred to M4 since MinIO's community distribution

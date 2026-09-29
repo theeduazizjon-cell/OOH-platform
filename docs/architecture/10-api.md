@@ -8,7 +8,13 @@
   Missing permission → `403`. Resource outside scope → `404` (don't reveal existence).
 - **State changes**: `POST /{resource}/{id}/actions/{action}` with optional body (`reason`, etc.). Returns the updated
   resource + `allowedActions`. Invalid → `409 INVALID_TRANSITION`.
-- **Concurrency**: responses carry `ETag: "<version>"`; `PATCH` and actions require `If-Match` → `412` on mismatch.
+- **Concurrency**: responses carry `ETag: "<version>"`; `PATCH`, `PUT` on sub-resources and actions on an existing
+  resource require `If-Match` → `412 PRECONDITION_FAILED` on mismatch (with the current ETag in `meta.etag`),
+  `428 PRECONDITION_REQUIRED` when absent. List items carry `version` so a client can act on a row directly.
+  `If-Match: *` means "whatever is current"; weak tags never match. Other refusals (404, 403, 422, 409) are
+  reported before the precondition (RFC 9110 §13.2.1), so a stale client still learns the real reason. Exempt:
+  creation (`POST` on a collection) and token-authorised flows such as accepting an invitation. Implemented for
+  memberships (`apps/api/src/core/http/concurrency.ts`); every later resource follows the same pattern.
 - **Idempotency**: `Idempotency-Key` header supported on POSTs (required on mobile evidence uploads).
 - **Pagination**: cursor-based: `?limit=50&cursor=…` → `{ data: [...], page: { nextCursor, hasMore } }`.
 - **Filtering / sorting / search**: `?filter[status]=LIVE,REMOVAL_DUE&filter[clientId]=…&sort=-endDate&q=sinaia`.

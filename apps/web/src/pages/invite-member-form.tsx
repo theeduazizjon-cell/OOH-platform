@@ -4,17 +4,13 @@ import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/card';
 import { Input, Label } from '@/components/ui/input';
 import { ApiError } from '@/lib/api';
+import { RoleCheckboxes, selectedRoleIds } from './role-checkboxes';
 
-function errorMessage(error: unknown): string {
+export function errorMessage(error: unknown): string {
   // CONFLICT (already invited/member), FORBIDDEN (would grant more than you hold) and
   // VALIDATION_FAILED all carry a readable detail from the API.
   if (error instanceof ApiError) return error.message;
   return 'Could not reach the server. Check your connection and try again.';
-}
-
-/** Roles an invitation can carry today: active and internal (external members need the CRM). */
-export function invitableRoles(roles: readonly RoleListItem[]): RoleListItem[] {
-  return roles.filter((r) => r.active && !r.isExternal);
 }
 
 export function InviteMemberForm({
@@ -28,7 +24,6 @@ export function InviteMemberForm({
 }) {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const choices = invitableRoles(roles);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -37,7 +32,7 @@ export function InviteMemberForm({
       const value = data.get(name);
       return typeof value === 'string' ? value.trim() : '';
     };
-    const roleIds = data.getAll('roleIds').filter((v): v is string => typeof v === 'string');
+    const roleIds = selectedRoleIds(data);
     if (!text('email') || !text('displayName')) {
       setError('Enter the person’s email and name.');
       return;
@@ -79,23 +74,7 @@ export function InviteMemberForm({
           <Input id="invite-name" name="displayName" autoComplete="off" maxLength={120} required />
         </div>
       </div>
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium text-slate-700">Roles</legend>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {choices.map((r) => (
-            <label key={r.id} className="flex items-start gap-2 text-sm">
-              <input type="checkbox" name="roleIds" value={r.id} className="mt-0.5 size-4 accent-brand-600" />
-              <span>
-                <span className="font-medium text-slate-800">{r.name}</span>
-                {r.description && <span className="block text-xs text-slate-500">{r.description}</span>}
-              </span>
-            </label>
-          ))}
-        </div>
-        <p className="text-xs text-slate-500">
-          Client, agency and supplier users can be invited once companies are managed in the CRM.
-        </p>
-      </fieldset>
+      <RoleCheckboxes roles={roles} />
       <div className="flex justify-end gap-2">
         <Button variant="secondary" onClick={onCancel} disabled={submitting}>
           Cancel

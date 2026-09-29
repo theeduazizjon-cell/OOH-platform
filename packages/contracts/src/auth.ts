@@ -70,9 +70,11 @@ export interface MembershipListItem {
   email: string;
   kind: 'INTERNAL' | 'EXTERNAL';
   status: 'INVITED' | 'ACTIVE' | 'SUSPENDED';
-  roles: { key: string; name: string }[];
+  roles: { id: string; key: string; name: string }[];
   /** The pending invitation of an INVITED member (null once accepted, or when none is pending). */
   invitation: { expiresAt: string } | null;
+  /** Optimistic-locking version; send it back as `If-Match: etagOf(version)` when changing the member. */
+  version: number;
 }
 
 /** A tenant role (Admin → Roles; also the choices when inviting). */
@@ -85,4 +87,19 @@ export interface RoleListItem {
   /** External roles are for client/agency/supplier/decorator members. */
   isExternal: boolean;
   active: boolean;
+  /** Members (invited, active or suspended) holding the role. */
+  memberCount: number;
+  /** Optimistic-locking version; send it back as `If-Match: etagOf(version)` when changing the role. */
+  version: number;
 }
+
+/** Roles given to a member (invitation or role change): 1–10 distinct role ids of the tenant. */
+export const memberRoleIdsSchema = z
+  .array(z.uuid())
+  .min(1)
+  .max(10)
+  .refine((ids) => new Set(ids).size === ids.length, 'Role ids must be unique');
+
+/** PUT /memberships/{id}/roles: replaces the member's roles. */
+export const setMemberRolesRequestSchema = z.object({ roleIds: memberRoleIdsSchema });
+export type SetMemberRolesRequest = z.infer<typeof setMemberRolesRequestSchema>;
