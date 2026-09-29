@@ -1,7 +1,7 @@
 [extend]
 useDefault = true
 
-[allowlist]
+[[allowlists]]
 description = "Well-known local-development credentials (never used outside docker compose / tests)"
 paths = [
   '''\.env\.example$''',
