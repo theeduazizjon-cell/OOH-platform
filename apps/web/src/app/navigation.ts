@@ -53,7 +53,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     milestone: 'M11',
   },
   { label: 'Tasks', path: '/app/tasks', icon: CheckSquare, permission: 'task.read', milestone: 'M2' },
-  { label: 'CRM', path: '/app/crm', icon: Briefcase, permission: 'organisation.read', milestone: 'M2' },
+  { label: 'CRM', path: '/app/crm/companies', icon: Briefcase, permission: 'organisation.read' },
   {
     label: 'Commercial',
     path: '/app/commercial',
