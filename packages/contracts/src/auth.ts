@@ -71,4 +71,18 @@ export interface MembershipListItem {
   kind: 'INTERNAL' | 'EXTERNAL';
   status: 'INVITED' | 'ACTIVE' | 'SUSPENDED';
   roles: { key: string; name: string }[];
+  /** The pending invitation of an INVITED member (null once accepted, or when none is pending). */
+  invitation: { expiresAt: string } | null;
+}
+
+/** A tenant role (Admin → Roles; also the choices when inviting). */
+export interface RoleListItem {
+  id: string;
+  key: string;
+  name: string;
+  description: string | null;
+  isSystem: boolean;
+  /** External roles are for client/agency/supplier/decorator members. */
+  isExternal: boolean;
+  active: boolean;
 }
