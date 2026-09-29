@@ -140,6 +140,7 @@ export class InvitationsService {
             kind: 'INTERNAL',
             status: 'INVITED',
             roles: roles.map(({ key, name }) => ({ key, name })),
+            invitation: { expiresAt: issued.expiresAt },
           },
           invitation: issued,
         };

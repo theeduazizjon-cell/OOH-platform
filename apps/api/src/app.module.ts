@@ -10,6 +10,7 @@ import { RedisModule } from './core/redis/redis.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
 import { MembershipsModule } from './modules/memberships/memberships.module';
+import { RolesModule } from './modules/roles/roles.module';
 
 @Module({})
 export class AppModule {
@@ -40,6 +41,7 @@ export class AppModule {
         HealthModule,
         AuthModule,
         MembershipsModule,
+        RolesModule,
       ],
     };
   }

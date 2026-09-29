@@ -8,7 +8,10 @@ import {
   type InvitationPreview,
   type InviteMemberResponse,
   type IssuedInvitation,
+  type MembershipListItem,
+  type Page,
   REFRESH_COOKIE_NAME,
+  type RoleListItem,
 } from '@ooh/contracts';
 import {
   appUser,
@@ -351,5 +354,48 @@ describe('resending and cancelling', () => {
     for (const action of ['resend-invitation', 'cancel-invitation']) {
       expect((await membershipAction(otherAdmin, member.id, action)).statusCode).toBe(404);
     }
+  });
+});
+
+describe('what the invite screen reads', () => {
+  it('GET /roles lists the tenant’s roles for holders of roles.read only', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/roles',
+      headers: bearer(await tokenFor('admin')),
+    });
+    expect(response.statusCode).toBe(200);
+    const roles = response.json<Page<RoleListItem>>().data;
+    expect(roles.map((r) => r.id)).toEqual(expect.arrayContaining([roleIds.ooh_buyer, roleIds.reader]));
+    expect(roles.find((r) => r.key === 'end_client')).toMatchObject({ isExternal: true, isSystem: true });
+    expect(roles.find((r) => r.key === 'reader')).toMatchObject({ isExternal: false, isSystem: false });
+    // Internal roles come first; nothing from the other tenant.
+    expect(roles.findIndex((r) => r.isExternal)).toBeGreaterThan(roles.findLastIndex((r) => !r.isExternal));
+    expect(roles.map((r) => r.id)).not.toContain(await roleId(tenantB, 'viewer'));
+
+    const viewer = await app.inject({
+      method: 'GET',
+      url: '/api/v1/roles',
+      headers: bearer(await tokenFor('viewer')),
+    });
+    expect(viewer.statusCode).toBe(403);
+  });
+
+  it('the member list shows when a pending invitation expires, and nothing once accepted', async () => {
+    const admin = await tokenFor('admin');
+    const pending = await invited(admin, 'listed');
+    const done = await invited(admin, 'listed-done');
+    await accept(done.invitation.token, { password: NEW_PASSWORD });
+
+    const list = await app.inject({ method: 'GET', url: '/api/v1/memberships', headers: bearer(admin) });
+    const members = list.json<Page<MembershipListItem>>().data;
+    expect(members.find((m) => m.id === pending.membership.id)?.invitation).toEqual({
+      expiresAt: pending.invitation.expiresAt,
+    });
+    expect(members.find((m) => m.id === done.membership.id)).toMatchObject({
+      status: 'ACTIVE',
+      invitation: null,
+    });
+    expect(new Set(members.map((m) => m.id)).size).toBe(members.length);
   });
 });
