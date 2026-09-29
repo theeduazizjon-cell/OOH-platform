@@ -24,6 +24,7 @@ import {
   timestamp,
   inet,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { archivedAt, citext, primaryId, tenantIdColumn, timestamps, versionColumn } from './columns';
@@ -167,6 +168,46 @@ export const membershipRole = pgTable(
       foreignColumns: [role.tenantId, role.id],
     }).onDelete('cascade'),
     index('membership_role_role_idx').on(t.tenantId, t.roleId),
+  ],
+);
+
+/**
+ * Invitation to join a tenant. Inviting creates the INVITED membership (with its roles) right away;
+ * the invitation carries the one-time acceptance secret for it. Only a SHA-256 hash of the
+ * high-entropy secret is stored. Resending revokes the pending invitation and issues a new one, so
+ * at most one invitation per membership is pending at a time.
+ */
+export const invitation = pgTable(
+  'invitation',
+  {
+    id: primaryId(),
+    tenantId: tenantIdColumn().references(() => tenant.id),
+    membershipId: uuid('membership_id').notNull(),
+    /** Address the invitation was sent to (snapshot; the user's email may change later). */
+    email: citext('email').notNull(),
+    tokenHash: text('token_hash').notNull(),
+    invitedByMembershipId: uuid('invited_by_membership_id'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('invitation_tenant_id_id_uq').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'invitation_membership_fk',
+      columns: [t.tenantId, t.membershipId],
+      foreignColumns: [membership.tenantId, membership.id],
+    }).onDelete('cascade'),
+    foreignKey({
+      name: 'invitation_invited_by_fk',
+      columns: [t.tenantId, t.invitedByMembershipId],
+      foreignColumns: [membership.tenantId, membership.id],
+    }),
+    uniqueIndex('invitation_one_pending_per_membership_uq')
+      .on(t.tenantId, t.membershipId)
+      .where(sql`${t.acceptedAt} IS NULL AND ${t.revokedAt} IS NULL`),
+    check('invitation_not_accepted_and_revoked_ck', sql`${t.acceptedAt} IS NULL OR ${t.revokedAt} IS NULL`),
   ],
 );
 
