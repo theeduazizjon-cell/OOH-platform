@@ -1,4 +1,4 @@
-import type { AuthSession } from '@ooh/contracts';
+import type { AcceptInvitationRequest, AuthSession } from '@ooh/contracts';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, type ReactNode, useContext, useEffect, useMemo, useState } from 'react';
 import { api } from './api';
@@ -9,6 +9,8 @@ export interface AuthContextValue {
   status: AuthStatus;
   session: AuthSession | null;
   login(email: string, password: string): Promise<void>;
+  /** Resolves with the tenant the invitation was for (the new session's tenant). */
+  acceptInvitation(token: string, body: AcceptInvitationRequest): Promise<string>;
   logout(): Promise<void>;
   switchTenant(tenantId: string): Promise<void>;
 }
@@ -37,6 +39,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       login: async (email, password) => {
         await api.login(email, password);
+      },
+      acceptInvitation: async (token, body) => {
+        // Possibly a different user than the current session: drop any cached data first.
+        queryClient.clear();
+        return (await api.acceptInvitation(token, body)).tenantId;
       },
       logout: () => api.logout(),
       switchTenant: async (tenantId) => {

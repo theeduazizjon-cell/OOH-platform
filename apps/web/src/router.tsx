@@ -10,6 +10,7 @@ import { AppLayout } from '@/app/app-layout';
 import { NAV_ITEMS } from '@/app/navigation';
 import { RequirePermission } from '@/app/require-permission';
 import type { AuthContextValue } from '@/lib/auth';
+import { AcceptInvitationPage } from '@/pages/accept-invitation-page';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { LoginPage, safeRedirect } from '@/pages/login-page';
 import { PlaceholderPage } from '@/pages/placeholder-page';
@@ -39,6 +40,19 @@ const loginRoute = createRoute({
     if (context.auth.status === 'authenticated') throw redirect({ href: safeRedirect(search.redirect) });
   },
   component: LoginPage,
+});
+
+/**
+ * Public: the invitation link. Deliberately no redirect when a session exists: someone signed in
+ * (possibly as another user) can still accept; accepting starts the invited account's session.
+ */
+const inviteRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/invite/$token',
+  component: function InviteRoute() {
+    const { token } = inviteRoute.useParams();
+    return <AcceptInvitationPage token={token} />;
+  },
 });
 
 /** Everything under /app requires a session; the API still authorizes every call. */
@@ -89,6 +103,7 @@ const placeholderRoutes = NAV_ITEMS.filter((item) => item.milestone).map((item) 
 const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
+  inviteRoute,
   appRoute.addChildren([dashboardRoute, usersRoute, ...placeholderRoutes]),
 ]);
 

@@ -96,4 +96,13 @@ describe('ApiClient', () => {
     expect(fetchImpl.mock.calls.some(([input]) => urlOf(input).endsWith('/auth/refresh'))).toBe(true);
     expect(client.getSession()?.accessToken).toBe('renewed');
   });
+
+  it('acceptInvitation starts the invited session from the response', async () => {
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(json(200, session('INVITED')));
+    const client = new ApiClient('/api/v1', fetchImpl);
+    await client.acceptInvitation('abc.def', { password: 'pw' });
+    expect(urlOf(fetchImpl.mock.calls[0]![0])).toBe('/api/v1/auth/invitations/abc.def/accept');
+    expect(fetchImpl.mock.calls[0]![1]!.body).toBe(JSON.stringify({ password: 'pw' }));
+    expect(client.getSession()?.accessToken).toBe('INVITED');
+  });
 });

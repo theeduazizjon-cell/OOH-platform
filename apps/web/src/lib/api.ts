@@ -1,4 +1,9 @@
-import { type AuthSession, CSRF_HEADER, type ProblemDetails } from '@ooh/contracts';
+import {
+  type AcceptInvitationRequest,
+  type AuthSession,
+  CSRF_HEADER,
+  type ProblemDetails,
+} from '@ooh/contracts';
 
 export class ApiError extends Error {
   constructor(
@@ -84,6 +89,17 @@ export class ApiClient {
     const session = await this.request<AuthSession>(
       '/auth/login',
       { method: 'POST', json: { email, password } },
+      false,
+    );
+    this.setSession(session);
+    return session;
+  }
+
+  /** Accepts an invitation; like login, the response starts a session in the inviting company. */
+  async acceptInvitation(token: string, body: AcceptInvitationRequest): Promise<AuthSession> {
+    const session = await this.request<AuthSession>(
+      `/auth/invitations/${encodeURIComponent(token)}/accept`,
+      { method: 'POST', json: body },
       false,
     );
     this.setSession(session);
