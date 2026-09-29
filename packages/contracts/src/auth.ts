@@ -87,6 +87,10 @@ export interface RoleListItem {
   /** External roles are for client/agency/supplier/decorator members. */
   isExternal: boolean;
   active: boolean;
+  /** Members (invited, active or suspended) holding the role. */
+  memberCount: number;
+  /** Optimistic-locking version; send it back as `If-Match: etagOf(version)` when changing the role. */
+  version: number;
 }
 
 /** Roles given to a member (invitation or role change): 1–10 distinct role ids of the tenant. */

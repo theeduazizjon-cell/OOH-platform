@@ -60,6 +60,12 @@ export class AccessService {
     this.cache.delete(`${tenantId}:${userId}`);
   }
 
+  /** After a change affecting many members at once (e.g. a role's permissions). */
+  invalidateTenant(tenantId: string): void {
+    const prefix = `${tenantId}:`;
+    for (const key of this.cache.keys()) if (key.startsWith(prefix)) this.cache.delete(key);
+  }
+
   /** Loads inside an existing tenant transaction (RLS already scopes every query to the tenant). */
   async load(tx: Transaction, userId: string): Promise<MembershipAccess | null> {
     const [member] = await tx

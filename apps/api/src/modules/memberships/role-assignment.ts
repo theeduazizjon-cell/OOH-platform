@@ -88,6 +88,22 @@ export async function assertCanManageMember(
   }
 }
 
+/**
+ * Throws 403 unless the actor holds every grant (same or wider scope). Used when defining roles:
+ * nobody can create or edit a role granting more than they have, nor edit one that does.
+ */
+export function assertHoldsGrants(
+  principal: Principal,
+  grants: readonly { permission: string; scope: PermissionScope }[],
+  message: string,
+): void {
+  const exceeding = exceedingPermissions(
+    principal,
+    grants.filter((g) => isPermissionKey(g.permission)),
+  );
+  if (exceeding.length > 0) throw new AppError('FORBIDDEN', message, { meta: { permissions: exceeding } });
+}
+
 function exceedingPermissions(
   principal: Principal,
   grants: readonly { permission: string; scope: PermissionScope }[],
