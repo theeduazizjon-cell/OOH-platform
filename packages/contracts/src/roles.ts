@@ -64,6 +64,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     external: false,
     grants: grant(
       'ALL',
+      'config.read', // nomenclatures (03-rbac §4: Settings & nomenclatures = V)
       'organisation.read',
       'organisation.create',
       'organisation.update',
@@ -137,6 +138,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     grants: [
       ...grant(
         'ALL',
+        'config.read', // nomenclatures (03-rbac §4: Settings & nomenclatures = V)
         'organisation.read',
         'organisation.create',
         'contact.read',
@@ -167,6 +169,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     external: false,
     grants: grant(
       'ALL',
+      'config.read', // nomenclatures (03-rbac §4: Settings & nomenclatures = V)
       'organisation.read',
       'contact.read',
       'opportunity.read',
@@ -214,6 +217,7 @@ export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
     external: false,
     grants: grant(
       'ALL',
+      'config.read', // nomenclatures (03-rbac §4: Settings & nomenclatures = V)
       'organisation.read',
       'contact.read',
       'campaign.read',

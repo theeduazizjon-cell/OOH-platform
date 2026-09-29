@@ -1,7 +1,7 @@
-import { ROLE_TEMPLATES } from '@ooh/contracts';
+import { DEFAULT_ORGANISATION_CLASSIFICATIONS, ROLE_TEMPLATES } from '@ooh/contracts';
 import { and, eq } from 'drizzle-orm';
 import type { Database, Transaction } from './client';
-import { role, rolePermission, tenant } from './schema';
+import { organisationClassification, role, rolePermission, tenant } from './schema';
 
 export interface ProvisionTenantInput {
   readonly name: string;
@@ -9,9 +9,10 @@ export interface ProvisionTenantInput {
 }
 
 /**
- * Creates a tenant (if missing) and installs/refreshes the system role templates.
- * Platform-level operation: requires a connection that bypasses RLS (owner/platform role).
- * Idempotent: re-running updates system roles to the current templates.
+ * Creates a tenant (if missing), installs/refreshes the system role templates and installs the
+ * default nomenclatures. Platform-level operation: requires a connection that bypasses RLS
+ * (owner/platform role). Idempotent: re-running updates system roles to the current templates and
+ * adds missing defaults, but never overwrites nomenclatures the tenant edited.
  */
 export async function provisionTenant(
   db: Database,
@@ -25,8 +26,23 @@ export async function provisionTenant(
     const [row] = await tx.select({ id: tenant.id }).from(tenant).where(eq(tenant.slug, input.slug));
     if (!row) throw new Error(`Tenant ${input.slug} could not be created`);
     await installSystemRoles(tx, row.id);
+    await installDefaultClassifications(tx, row.id);
     return { tenantId: row.id };
   });
+}
+
+async function installDefaultClassifications(tx: Transaction, tenantId: string): Promise<void> {
+  await tx
+    .insert(organisationClassification)
+    .values(
+      DEFAULT_ORGANISATION_CLASSIFICATIONS.map((c, index) => ({
+        tenantId,
+        key: c.key,
+        name: c.name,
+        sortOrder: (index + 1) * 10,
+      })),
+    )
+    .onConflictDoNothing({ target: [organisationClassification.tenantId, organisationClassification.key] });
 }
 
 async function installSystemRoles(tx: Transaction, tenantId: string): Promise<void> {

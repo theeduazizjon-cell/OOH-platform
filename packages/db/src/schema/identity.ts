@@ -83,7 +83,8 @@ export const membership = pgTable(
     status: membershipStatus('status').notNull().default('INVITED'),
     /**
      * CRM organisation an EXTERNAL member represents (drives ORGANISATION scope).
-     * The composite FK to organisation(tenant_id, id) is added with the CRM module (M2).
+     * Composite FK to organisation(tenant_id, id): membership_organisation_fk, created in migration
+     * 0009 (declared there to avoid a circular import between this file and crm.ts).
      */
     organisationId: uuid('organisation_id'),
     /** Bumped whenever roles/permissions change, which forces access-token refresh. */
