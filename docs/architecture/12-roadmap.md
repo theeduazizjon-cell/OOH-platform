@@ -9,6 +9,16 @@ Follows the roadmap's sequence [R§51] with **three justified adjustments**:
 3. **Email-to-Brief (step 17) and the AI assistant (18)** stay late, but the Brief model reserves AI provenance
    fields from M3 so nothing needs migrating.
 
+## Progress
+
+| Milestone                                                                                                           | Status                                              |
+| ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| M0 Foundation, M1 Tenancy/Auth/RBAC                                                                                 | ✅ done 2026-09-29 (details in 13-first-sprint.md)  |
+| M2a Organisations: classifications (nomenclature), companies CRUD, VAT + fuzzy-name dedupe, OWN scope, Companies UI | ✅ done 2026-09-29 (branch `feat/m2-organisations`) |
+| M2b Contacts (+consent), agency ↔ client relationships, external invitations                                        | next                                                |
+| M2c Pipelines/stages config, opportunities (kanban, WON/LOST), activities                                           | planned                                             |
+| M2d Company 360° v1, tasks core                                                                                     | planned                                             |
+
 Sizing assumes 1–2 developers; each milestone ends with a demo on the Carrefour Sinaia scenario and passing tests.
 
 | Milestone                        | Roadmap steps | Scope                                                                                                                                                                             | Exit criteria                                                                                             | Est.   |
