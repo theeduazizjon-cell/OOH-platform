@@ -13,6 +13,8 @@ const role = (id: string, name: string, extra: Partial<RoleListItem> = {}): Role
   isSystem: true,
   isExternal: false,
   active: true,
+  memberCount: 0,
+  version: 1,
   ...extra,
 });
 

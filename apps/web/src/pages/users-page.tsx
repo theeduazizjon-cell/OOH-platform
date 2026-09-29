@@ -15,6 +15,7 @@ import { Alert, Card } from '@/components/ui/card';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { hasPermission, useMe } from '@/lib/me';
+import { AdminTabs } from './admin-tabs';
 import { EditRolesForm } from './edit-roles-form';
 import { formatDate, InvitationLink } from './invitation-link';
 import { InviteMemberForm } from './invite-member-form';
@@ -166,6 +167,7 @@ export function UsersPage() {
 
   return (
     <div className="max-w-5xl space-y-4">
+      <AdminTabs />
       <div className="flex items-center justify-between gap-4">
         <h1 className="text-xl font-semibold">Users</h1>
         {can.invite && panel?.kind !== 'invite' && (
