@@ -205,6 +205,10 @@ integrity check plus a nightly orphan report covers them. Business-critical rela
 - **Never deleted**: audit_event, status_history, client_decision, evidence, commercial_line (LOCKED), inbound_email.
 - **Hard delete allowed**: DRAFT rows that nothing references (draft tariff, draft brief line, candidate not in a study).
 - **GDPR erasure** (contacts): anonymise PII columns in place and keep the row for referential integrity.
+  Because the audit trail is append-only and never erasable, **audit events about contacts never hold personal
+  values**: changes to personal fields are recorded as changed without their values (consent status and dates are
+  kept, they are what the trail is for). Consent: `consent_status` UNKNOWN / OPTED_IN / OPTED_OUT; a stated
+  preference requires `consent_source` and `consent_at`; `newsletter_eligible` is generated from them.
 
 ## 5. Versioning summary
 

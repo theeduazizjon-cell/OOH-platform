@@ -15,7 +15,8 @@ Follows the roadmap's sequence [R§51] with **three justified adjustments**:
 | ------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------- |
 | M0 Foundation, M1 Tenancy/Auth/RBAC                                                                                 | ✅ done 2026-09-29 (details in 13-first-sprint.md)  |
 | M2a Organisations: classifications (nomenclature), companies CRUD, VAT + fuzzy-name dedupe, OWN scope, Companies UI | ✅ done 2026-09-29 (branch `feat/m2-organisations`) |
-| M2b Contacts (+consent), agency ↔ client relationships, external invitations                                        | next                                                |
+| M2b.1 Contacts (+consent, GDPR anonymisation), Contacts screens                                                     | ✅ done 2026-09-29 (branch `feat/m2-contacts`)      |
+| M2b.2 Agency ↔ client relationships, external invitations, account owner picker                                     | next                                                |
 | M2c Pipelines/stages config, opportunities (kanban, WON/LOST), activities                                           | planned                                             |
 | M2d Company 360° v1, tasks core                                                                                     | planned                                             |
 
