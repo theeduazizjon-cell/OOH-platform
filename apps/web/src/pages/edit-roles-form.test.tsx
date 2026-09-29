@@ -26,6 +26,7 @@ const member: MembershipListItem = {
   status: 'ACTIVE',
   roles: [{ id: 'r1', key: 'buyer', name: 'Buyer' }],
   invitation: null,
+  version: 1,
 };
 
 describe('EditRolesForm', () => {

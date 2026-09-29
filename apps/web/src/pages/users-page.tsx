@@ -1,16 +1,18 @@
-import type {
-  InviteMemberRequest,
-  InviteMemberResponse,
-  IssuedInvitation,
-  MembershipListItem,
-  Page,
-  RoleListItem,
+import {
+  etagOf,
+  IF_MATCH_HEADER,
+  type InviteMemberRequest,
+  type InviteMemberResponse,
+  type IssuedInvitation,
+  type MembershipListItem,
+  type Page,
+  type RoleListItem,
 } from '@ooh/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, Card } from '@/components/ui/card';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { hasPermission, useMe } from '@/lib/me';
 import { EditRolesForm } from './edit-roles-form';
@@ -37,8 +39,13 @@ interface ShownLink {
   invitation: IssuedInvitation;
 }
 
-type Panel = { kind: 'invite' } | { kind: 'roles'; member: MembershipListItem } | null;
+// The roles panel keeps only the id and reads the member from the (possibly refreshed) list, so a
+// retry after an edit conflict uses the current version.
+type Panel = { kind: 'invite' } | { kind: 'roles'; memberId: string } | null;
 type StatusAction = 'suspend' | 'reactivate';
+
+export const CONFLICT_MESSAGE =
+  'Someone else changed this member in the meantime. The list now shows the current state; check it and try again.';
 
 export function UsersPage() {
   const { session } = useAuth();
@@ -86,20 +93,38 @@ export function UsersPage() {
     await refreshMembers();
   }
 
+  /**
+   * Changes to an existing member send `If-Match` with the version this page last read. When
+   * someone else changed the member first (412), the list is reloaded and the error explains why.
+   */
+  async function memberRequest<T>(
+    member: MembershipListItem,
+    path: string,
+    init: { method: 'POST' | 'PUT'; json?: unknown },
+  ): Promise<T> {
+    try {
+      return await api.request<T>(`/memberships/${member.id}${path}`, {
+        ...init,
+        headers: { [IF_MATCH_HEADER]: etagOf(member.version) },
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.code === 'PRECONDITION_FAILED') {
+        await refreshMembers();
+        throw new ApiError(error.status, { ...error.problem!, detail: CONFLICT_MESSAGE });
+      }
+      throw error;
+    }
+  }
+
   async function saveRoles(member: MembershipListItem, roleIds: string[]) {
-    await api.request<MembershipListItem>(`/memberships/${member.id}/roles`, {
-      method: 'PUT',
-      json: { roleIds },
-    });
+    await memberRequest<MembershipListItem>(member, '/roles', { method: 'PUT', json: { roleIds } });
     setPanel(null);
     await refreshMembers();
   }
 
   const resend = useMutation({
     mutationFn: (member: MembershipListItem) =>
-      api.request<IssuedInvitation>(`/memberships/${member.id}/actions/resend-invitation`, {
-        method: 'POST',
-      }),
+      memberRequest<IssuedInvitation>(member, '/actions/resend-invitation', { method: 'POST' }),
     onMutate: () => setActionError(null),
     onSuccess: (invitation, member) => {
       setShownLink({ email: member.email, invitation });
@@ -110,7 +135,7 @@ export function UsersPage() {
 
   const cancel = useMutation({
     mutationFn: (member: MembershipListItem) =>
-      api.request<void>(`/memberships/${member.id}/actions/cancel-invitation`, { method: 'POST' }),
+      memberRequest<void>(member, '/actions/cancel-invitation', { method: 'POST' }),
     onMutate: () => setActionError(null),
     onSuccess: (_, member) => {
       if (shownLink?.email === member.email) setShownLink(null);
@@ -121,13 +146,15 @@ export function UsersPage() {
 
   const changeStatus = useMutation({
     mutationFn: ({ member, action }: { member: MembershipListItem; action: StatusAction }) =>
-      api.request<MembershipListItem>(`/memberships/${member.id}/actions/${action}`, { method: 'POST' }),
+      memberRequest<MembershipListItem>(member, `/actions/${action}`, { method: 'POST' }),
     onMutate: () => setActionError(null),
     onSuccess: () => void refreshMembers(),
     onError: (e) => setActionError(e.message),
   });
 
   const busy = resend.isPending || cancel.isPending || changeStatus.isPending;
+  // Gone from the list (e.g. an invitation cancelled by someone else): the panel just closes.
+  const editing = panel?.kind === 'roles' ? data?.data.find((m) => m.id === panel.memberId) : undefined;
 
   function confirmStatus(member: MembershipListItem, action: StatusAction) {
     const question =
@@ -146,22 +173,22 @@ export function UsersPage() {
         )}
       </div>
 
-      {panel && (
+      {(panel?.kind === 'invite' || editing) && (
         <Card className="p-4">
           <h2 className="mb-3 text-base font-semibold">
-            {panel.kind === 'invite' ? 'Invite a user' : `Roles of ${panel.member.displayName}`}
+            {editing ? `Roles of ${editing.displayName}` : 'Invite a user'}
           </h2>
           {roles.isLoading && <p className="text-sm text-slate-500">Loading roles…</p>}
           {roles.error && <Alert>{roles.error.message}</Alert>}
-          {roles.data && panel.kind === 'invite' && (
+          {roles.data && panel?.kind === 'invite' && (
             <InviteMemberForm roles={roles.data.data} onSubmit={invite} onCancel={() => setPanel(null)} />
           )}
-          {roles.data && panel.kind === 'roles' && (
+          {roles.data && editing && (
             <EditRolesForm
-              key={panel.member.id}
-              member={panel.member}
+              key={editing.id}
+              member={editing}
               roles={roles.data.data}
-              onSubmit={(roleIds) => saveRoles(panel.member, roleIds)}
+              onSubmit={(roleIds) => saveRoles(editing, roleIds)}
               onCancel={() => setPanel(null)}
             />
           )}
@@ -228,7 +255,7 @@ export function UsersPage() {
                           <>
                             {can.editRoles &&
                               action('Roles', `Edit roles of ${m.email}`, () =>
-                                openPanel({ kind: 'roles', member: m }),
+                                openPanel({ kind: 'roles', memberId: m.id }),
                               )}
                             {m.status === 'INVITED' &&
                               can.invite &&
