@@ -12,6 +12,7 @@ import { RequirePermission } from '@/app/require-permission';
 import type { AuthContextValue } from '@/lib/auth';
 import { AcceptInvitationPage } from '@/pages/accept-invitation-page';
 import { CompaniesPage } from '@/pages/companies-page';
+import { ContactsPage } from '@/pages/contacts-page';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { LoginPage, safeRedirect } from '@/pages/login-page';
 import { PlaceholderPage } from '@/pages/placeholder-page';
@@ -109,6 +110,16 @@ const companiesRoute = createRoute({
   ),
 });
 
+const contactsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'crm/contacts',
+  component: () => (
+    <RequirePermission permission="contact.read">
+      <ContactsPage />
+    </RequirePermission>
+  ),
+});
+
 /** Modules not built yet get a placeholder that names the delivering milestone. */
 const placeholderRoutes = NAV_ITEMS.filter((item) => item.milestone).map((item) =>
   createRoute({
@@ -126,7 +137,14 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   loginRoute,
   inviteRoute,
-  appRoute.addChildren([dashboardRoute, usersRoute, rolesRoute, companiesRoute, ...placeholderRoutes]),
+  appRoute.addChildren([
+    dashboardRoute,
+    usersRoute,
+    rolesRoute,
+    companiesRoute,
+    contactsRoute,
+    ...placeholderRoutes,
+  ]),
 ]);
 
 export const router = createRouter({

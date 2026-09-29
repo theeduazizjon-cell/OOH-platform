@@ -14,7 +14,9 @@ import { Input } from '@/components/ui/input';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { hasPermission, useMe } from '@/lib/me';
+import { CompanyContacts } from './company-contacts';
 import { CompanyForm, type CompanyFormValues } from './company-form';
+import { CrmTabs } from './crm-tabs';
 
 export const COMPANY_CONFLICT_MESSAGE =
   'Someone else changed this company in the meantime. It has been reloaded; check it and try again.';
@@ -119,6 +121,7 @@ export function CompaniesPage() {
 
   return (
     <div className="max-w-6xl space-y-4">
+      <CrmTabs />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Companies</h1>
         {can.create && panel?.kind !== 'new' && (
@@ -172,6 +175,7 @@ export function CompaniesPage() {
               {!can.update && (
                 <p className="mt-2 text-xs text-slate-500">You can view but not edit companies.</p>
               )}
+              <CompanyContacts organisationId={company.id} archived={Boolean(company.archivedAt)} />
             </>
           )}
         </Card>
