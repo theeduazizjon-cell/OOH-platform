@@ -221,6 +221,15 @@ export class AuthService {
     };
   }
 
+  /** Starts a new session for a user who just proved who they are another way (accepted invitation). */
+  async startSession(userId: string, tenantId: string, client: ClientInfo): Promise<IssuedSession> {
+    const issued = await this.issueSession(userId, tenantId, crypto.randomUUID(), client);
+    await this.database.withUser(userId, (tx) =>
+      tx.update(appUser).set({ lastLoginAt: new Date() }).where(eq(appUser.id, userId)),
+    );
+    return issued;
+  }
+
   // ── internals ──────────────────────────────────────────────────────────────
 
   /** Active memberships in active tenants, read in user mode (the user's own rows only). */

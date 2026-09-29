@@ -1,7 +1,9 @@
-import { Body, Controller, Get, HttpCode, Inject, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Inject, Param, Post, Req, Res } from '@nestjs/common';
 import {
+  acceptInvitationRequestSchema,
   type AuthSession,
   CSRF_HEADER,
+  type InvitationPreview,
   loginRequestSchema,
   type MeResponse,
   REFRESH_COOKIE_NAME,
@@ -16,12 +18,14 @@ import { TokenService } from '../../core/auth/token.service';
 import { AppError } from '../../core/http/app-error';
 import { clientInfo } from '../../core/http/client-info';
 import { parseWith } from '../../core/http/validation';
+import { InvitationsService } from '../memberships/invitations.service';
 import { AuthService, type IssuedSession } from './auth.service';
 
 @Controller('auth')
 export class AuthController {
   constructor(
     private readonly auth: AuthService,
+    private readonly invitations: InvitationsService,
     @Inject(ENV) private readonly env: Env,
   ) {}
 
@@ -80,6 +84,32 @@ export class AuthController {
       reply,
       await this.auth.switchTenant(principal, tenantId, this.readCookie(request), clientInfo(request)),
     );
+  }
+
+  /** Public: what the invitation link is for (company, email, whether the account exists). */
+  @Public()
+  @Get('invitations/:token')
+  previewInvitation(@Param('token') token: string): Promise<InvitationPreview> {
+    return this.invitations.preview(token);
+  }
+
+  /** Public: accepts the invitation and signs the invitee into the inviting company. */
+  @Public()
+  @Post('invitations/:token/accept')
+  @HttpCode(200)
+  async acceptInvitation(
+    @Param('token') token: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+    @Res({ passthrough: true }) reply: FastifyReply,
+  ): Promise<AuthSession> {
+    const client = clientInfo(request);
+    const accepted = await this.invitations.accept(
+      token,
+      parseWith(acceptInvitationRequestSchema, body),
+      client,
+    );
+    return this.respond(reply, await this.auth.startSession(accepted.userId, accepted.tenantId, client));
   }
 
   private respond(reply: FastifyReply, issued: IssuedSession): AuthSession {
