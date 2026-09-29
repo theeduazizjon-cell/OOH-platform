@@ -19,9 +19,10 @@ const queryClient = new QueryClient({
 
 function App() {
   const auth = useAuth();
-  // Re-run route guards whenever the session starts or ends.
+  // Re-run route guards whenever the session starts or ends. Not while loading: the RouterProvider
+  // (which supplies context.auth to the guards) isn't mounted yet.
   useEffect(() => {
-    void router.invalidate();
+    if (auth.status !== 'loading') void router.invalidate();
   }, [auth.status, auth.session?.tenantId]);
 
   if (auth.status === 'loading') {
