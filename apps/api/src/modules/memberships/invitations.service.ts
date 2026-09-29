@@ -6,21 +6,11 @@ import {
   type InviteMemberRequest,
   type InviteMemberResponse,
   type IssuedInvitation,
-  isPermissionKey,
-  type PermissionScope,
 } from '@ooh/contracts';
-import {
-  appUser,
-  invitation,
-  membership,
-  membershipRole,
-  role,
-  rolePermission,
-  type Transaction,
-} from '@ooh/db';
-import { and, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
+import { appUser, invitation, membership, membershipRole, type Transaction } from '@ooh/db';
+import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
-import { AccessService, SCOPE_RANK } from '../../core/auth/access.service';
+import { AccessService } from '../../core/auth/access.service';
 import { LoginThrottle } from '../../core/auth/login-throttle';
 import { PasswordService } from '../../core/auth/password.service';
 import { type Principal } from '../../core/auth/principal';
@@ -28,6 +18,7 @@ import { TokenService } from '../../core/auth/token.service';
 import { DatabaseService } from '../../core/database/database.service';
 import { AppError } from '../../core/http/app-error';
 import { type ClientInfo } from '../../core/http/client-info';
+import { loadAssignableRoles } from './role-assignment';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SECRET_RE = /^[A-Za-z0-9_-]{43}$/;
@@ -81,7 +72,7 @@ export class InvitationsService {
     return this.database.withTenant(
       { tenantId: principal.tenantId, actorUserId: principal.userId },
       async (tx) => {
-        const roles = await this.loadAssignableRoles(tx, principal, input.roleIds);
+        const roles = await loadAssignableRoles(tx, principal, input.roleIds);
 
         const [ensured] = await tx.execute<{ id: string | null }>(
           sql`SELECT invitation_ensure_user(${input.email}, ${input.displayName}) AS id`,
@@ -139,7 +130,7 @@ export class InvitationsService {
             email: user?.email ?? input.email,
             kind: 'INTERNAL',
             status: 'INVITED',
-            roles: roles.map(({ key, name }) => ({ key, name })),
+            roles: roles.map(({ id, key, name }) => ({ id, key, name })),
             invitation: { expiresAt: issued.expiresAt },
           },
           invitation: issued,
@@ -286,49 +277,6 @@ export class InvitationsService {
 
   // ── internals ──────────────────────────────────────────────────────────────
 
-  /**
-   * Roles must exist in this tenant, be active and internal (external members need an organisation,
-   * which arrives with the CRM), and grant nothing beyond what the inviter holds (no escalation).
-   */
-  private async loadAssignableRoles(tx: Transaction, principal: Principal, roleIds: readonly string[]) {
-    const roles = await tx
-      .select({
-        id: role.id,
-        key: role.key,
-        name: role.name,
-        active: role.active,
-        isExternal: role.isExternal,
-      })
-      .from(role)
-      .where(inArray(role.id, [...roleIds]));
-    if (roles.length !== roleIds.length || roles.some((r) => !r.active)) {
-      throw new AppError('VALIDATION_FAILED', 'Unknown or disabled role.', {
-        errors: [{ path: 'roleIds', message: 'Unknown or disabled role' }],
-      });
-    }
-    if (roles.some((r) => r.isExternal)) {
-      throw new AppError(
-        'VALIDATION_FAILED',
-        'External roles can be assigned once organisations are available.',
-        {
-          errors: [{ path: 'roleIds', message: 'External roles are not supported yet' }],
-        },
-      );
-    }
-
-    const grants = await tx
-      .select({ permission: rolePermission.permissionKey, scope: rolePermission.scope })
-      .from(rolePermission)
-      .where(inArray(rolePermission.roleId, [...roleIds]));
-    const exceeding = grants.filter((grant) => !holds(principal, grant.permission, grant.scope));
-    if (exceeding.length > 0) {
-      throw new AppError('FORBIDDEN', 'You cannot grant permissions you do not have yourself.', {
-        meta: { permissions: [...new Set(exceeding.map((g) => g.permission))].sort() },
-      });
-    }
-    return roles.sort((a, b) => a.name.localeCompare(b.name));
-  }
-
   private async lockInvitedMembership(tx: Transaction, membershipId: string): Promise<{ email: string }> {
     const [member] = await tx
       .select({ status: membership.status, email: appUser.email })
@@ -403,12 +351,6 @@ export class InvitationsService {
     }
     return found;
   }
-}
-
-function holds(principal: Principal, permission: string, scope: PermissionScope): boolean {
-  if (!isPermissionKey(permission)) return false;
-  const held = principal.permissions.get(permission);
-  return held !== undefined && SCOPE_RANK[held] >= SCOPE_RANK[scope];
 }
 
 export function parseInvitationToken(token: string): { invitationId: string; secret: string } | null {
