@@ -19,8 +19,10 @@ more than one role"; R§5 SaaS]. Each access token carries exactly **one** activ
 
 - **Permission keys are code-defined** (`resource.action`), such as `campaign.read`, `study.publish`, `evidence.review`.
   Code checks them, so code must define them. The catalog lives in `packages/contracts/permissions.ts` and is seeded.
-- **Roles are data.** Each tenant gets the system role templates below and can clone or edit them
-  ("configurable rather than hard-coded" [R§2]). System templates can't be deleted, only disabled.
+- **Roles are data.** Each tenant gets the system role templates below and can clone them into custom roles
+  ("configurable rather than hard-coded" [R§2]). System templates can't be edited or deleted, only disabled
+  (OPD-27: provisioning keeps them in line with the code templates). Custom role keys are `custom_…`, so they can
+  never collide with a future template key.
 - **Scope on each grant**: a role grants `permission@scope`:
   - `ALL`: everything in the tenant
   - `OWN`: records where the user is owner/creator (for example, Sales on opportunities)
@@ -99,7 +101,10 @@ Comments (`comment.visibility = INTERNAL | EXTERNAL`): external users only ever 
    permissions they hold themselves, at the same or a narrower scope. Likewise, a member may only be managed
    (suspended, reactivated, given new roles) by someone who holds every permission that member has, so a limited
    user administrator can't act on a Company Admin. Nobody manages their own membership, so a tenant can't lock
-   out its last administrator this way. Enforced in the API.
+   out its last administrator this way. Roles follow the same rule: nobody creates or edits a role granting more
+   than they hold, nor edits or deletes a role that does. Enforced in the API.
+7. **Always an administrator**: a role change (edit, disable) that would leave no active member holding both
+   `roles.manage` and `users.update` is refused (409), so a tenant can always repair its own access setup.
 
 ## 6. Portal access (external)
 

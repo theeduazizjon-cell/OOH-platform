@@ -9,7 +9,7 @@
 | Step 3a — invitations API | invite, resend, cancel, preview, accept          | ✅ done 2026-09-29 (branch `feat/m1-invitations`)     |
 | Step 3b — invitations UI  | invite dialog, pending invites, `/invite/:token` | ✅ done 2026-09-29 (branch `feat/m1-invitations-ui`)  |
 | Step 3c — user management | suspend/reactivate, change roles (API + UI)      | ✅ done 2026-09-29 (branch `feat/m1-user-management`) |
-| Step 3d — roles admin     | roles & permissions screens (API + UI)           | next                                                  |
+| Step 3d — roles admin     | roles & permissions screens (API + UI)           | ✅ done 2026-09-29 (branch `feat/m1-user-management`) |
 
 Deviations from the plan: `packages/config` was dropped (root-level tooling configs); PostgreSQL 18 instead
 of 16 (native `uuidv7()`); object storage (MinIO) deferred to M4 since MinIO's community distribution
