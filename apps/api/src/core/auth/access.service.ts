@@ -21,7 +21,7 @@ export interface MembershipAccess {
 }
 
 /** Broader scope wins when several roles grant the same permission. */
-const SCOPE_RANK: Record<PermissionScope, number> = { ALL: 4, ORGANISATION: 3, ASSIGNED: 2, OWN: 1 };
+export const SCOPE_RANK: Record<PermissionScope, number> = { ALL: 4, ORGANISATION: 3, ASSIGNED: 2, OWN: 1 };
 
 const CACHE_TTL_MS = 30_000;
 const CACHE_MAX_ENTRIES = 10_000;

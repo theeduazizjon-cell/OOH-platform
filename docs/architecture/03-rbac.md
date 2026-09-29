@@ -95,10 +95,12 @@ Comments (`comment.visibility = INTERNAL | EXTERNAL`): external users only ever 
    policies simple and fast. It stays in the repository layer and is covered by authorization tests.
 4. **Serializer redaction**: internal-only fields are stripped for principals lacking `commercial.*.read`.
 5. **State-machine guards**: each transition declares its required permission (see 06).
+6. **No privilege escalation**: whoever assigns roles (invitations now, role changes later) may only hand out
+   permissions they hold themselves, at the same or a narrower scope. Enforced in the API.
 
 ## 6. Portal access (external)
 
-- External users are invited by email into a membership bound to an organisation. For MVP they get full
+- External users are invited by email into a membership bound to an organisation. Until organisations exist (CRM, M2), invitations accept internal roles only. For MVP they get full
   accounts with password or magic-link login. OPD-15 decides whether clients can approve through one-time signed links
   without an account.
 - An agency user sees campaigns where `campaign.agency_organisation_id = membership.organisation_id`. OPD-16 covers

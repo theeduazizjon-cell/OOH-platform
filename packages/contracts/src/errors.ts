@@ -13,6 +13,8 @@ export const ERROR_CODES = {
   FORBIDDEN: 403,
   NO_ACTIVE_MEMBERSHIP: 403,
   NOT_FOUND: 404,
+  /** Invitation link unknown, expired, revoked or already used. */
+  INVITATION_INVALID: 404,
   CONFLICT: 409,
   INVALID_TRANSITION: 409,
   BOOKING_CONFLICT: 409,
