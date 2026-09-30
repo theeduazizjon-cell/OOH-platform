@@ -1,6 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import type { MembershipListItem, Page, PageQuery, SetMemberRolesRequest } from '@ooh/contracts';
-import { appUser, invitation, membership, membershipRole, role, type Transaction } from '@ooh/db';
+import {
+  appUser,
+  invitation,
+  membership,
+  membershipRole,
+  organisation,
+  role,
+  type Transaction,
+} from '@ooh/db';
 import { and, asc, eq, gt, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
 import { AccessService } from '../../core/auth/access.service';
@@ -80,7 +88,7 @@ export class MembershipsService {
     const item = await this.inTenant(principal, async (tx) => {
       const target = await this.lockManageable(tx, principal, membershipId, 'change your own roles');
       affectedUserId = target.userId;
-      const roles = await loadAssignableRoles(tx, principal, input.roleIds);
+      const roles = await loadAssignableRoles(tx, principal, input.roleIds, target.kind);
       // After the 404/403/422 checks (RFC 9110 §13.2.1): a stale client still learns the real reason.
       assertIfMatch(ifMatch, target.version);
 
@@ -169,13 +177,14 @@ export class MembershipsService {
     principal: Principal,
     membershipId: string,
     selfAction: string,
-  ): Promise<{ userId: string; status: MembershipStatus; version: number }> {
+  ): Promise<{ userId: string; status: MembershipStatus; version: number; kind: 'INTERNAL' | 'EXTERNAL' }> {
     const [target] = await tx
       .select({
         id: membership.id,
         userId: membership.userId,
         status: membership.status,
         version: membership.version,
+        kind: membership.kind,
       })
       .from(membership)
       .where(and(eq(membership.id, membershipId), isNull(membership.archivedAt)))
@@ -214,9 +223,15 @@ export class MembershipsService {
         status: membership.status,
         version: membership.version,
         invitationExpiresAt: invitation.expiresAt,
+        organisationId: organisation.id,
+        organisationName: organisation.displayName,
       })
       .from(membership)
       .innerJoin(appUser, eq(appUser.id, membership.userId))
+      .leftJoin(
+        organisation,
+        and(eq(organisation.tenantId, membership.tenantId), eq(organisation.id, membership.organisationId)),
+      )
       // At most one pending invitation per membership (partial unique index), so no duplicates.
       .leftJoin(
         invitation,
@@ -248,8 +263,9 @@ export class MembershipsService {
           .orderBy(asc(role.name))
       : [];
 
-    return rows.map(({ invitationExpiresAt, ...row }) => ({
+    return rows.map(({ invitationExpiresAt, organisationId, organisationName, ...row }) => ({
       ...row,
+      organisation: organisationId ? { id: organisationId, displayName: organisationName ?? '' } : null,
       invitation: invitationExpiresAt ? { expiresAt: invitationExpiresAt.toISOString() } : null,
       roles: roleRows
         .filter((r) => r.membershipId === row.id)

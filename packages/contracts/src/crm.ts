@@ -267,3 +267,31 @@ export interface ContactDetail extends ContactListItem {
   createdAt: string;
   updatedAt: string;
 }
+
+// ── relationships ────────────────────────────────────────────────────────────
+
+export const ORGANISATION_RELATIONSHIP_KINDS = ['AGENCY_OF', 'SUPPLIER_TO', 'PARENT_OF'] as const;
+export type OrganisationRelationshipKind = (typeof ORGANISATION_RELATIONSHIP_KINDS)[number];
+
+/** POST /organisations/{id}/relationships: {id} is the "from" side ({id} is AGENCY_OF the other). */
+export const createRelationshipRequestSchema = z.object({
+  kind: z.enum(ORGANISATION_RELATIONSHIP_KINDS),
+  toOrganisationId: z.uuid(),
+});
+export type CreateRelationshipRequest = z.infer<typeof createRelationshipRequestSchema>;
+
+/** A relationship as seen from one organisation: `direction` says which side it is on. */
+export interface OrganisationRelationshipItem {
+  id: string;
+  kind: OrganisationRelationshipKind;
+  /** OUTGOING: this organisation is the agency/supplier/parent; INCOMING: the other one is. */
+  direction: 'OUTGOING' | 'INCOMING';
+  other: { id: string; displayName: string; archived: boolean };
+  createdAt: string;
+}
+
+/** GET /organisations/account-owners: members who can own accounts (active, internal). */
+export interface AccountOwnerCandidate {
+  membershipId: string;
+  displayName: string;
+}

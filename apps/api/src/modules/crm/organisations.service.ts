@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  type AccountOwnerCandidate,
   type CreateOrganisationRequest,
   DUPLICATE_NAME_CONTAINMENT,
   DUPLICATE_NAME_SIMILARITY,
@@ -244,6 +245,24 @@ export class OrganisationsService {
     });
   }
 
+  /** Members who can own accounts: active and internal (for the account owner picker). */
+  accountOwners(principal: Principal): Promise<AccountOwnerCandidate[]> {
+    return this.inTenant(principal, (tx) =>
+      tx
+        .select({ membershipId: membership.id, displayName: appUser.displayName })
+        .from(membership)
+        .innerJoin(appUser, eq(appUser.id, membership.userId))
+        .where(
+          and(
+            eq(membership.status, 'ACTIVE'),
+            eq(membership.kind, 'INTERNAL'),
+            isNull(membership.archivedAt),
+          ),
+        )
+        .orderBy(asc(appUser.displayName)),
+    );
+  }
+
   // ── duplicate detection ────────────────────────────────────────────────────
 
   /**
@@ -304,7 +323,7 @@ export class OrganisationsService {
   }
 
   /** OWN scope → only companies whose account owner is the caller. */
-  private scopeFilter(principal: Principal, permission: PermissionKey): SQL | undefined {
+  scopeFilter(principal: Principal, permission: PermissionKey): SQL | undefined {
     return principal.permissions.get(permission) === 'OWN'
       ? eq(organisation.accountOwnerMembershipId, principal.membershipId)
       : undefined;
@@ -314,7 +333,8 @@ export class OrganisationsService {
    * Locks a live company for a change. Outside the read scope it doesn't exist for the caller (404);
    * readable but outside the change scope is a 403 with the reason.
    */
-  private async lockEditable(tx: Transaction, principal: Principal, id: string, permission: PermissionKey) {
+  /** Also used by RelationshipsService: a relationship change is a change to its "from" company. */
+  async lockEditable(tx: Transaction, principal: Principal, id: string, permission: PermissionKey) {
     const [row] = await tx
       .select({ id: organisation.id })
       .from(organisation)

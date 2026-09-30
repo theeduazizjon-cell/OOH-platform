@@ -7,7 +7,7 @@ import {
   type InviteMemberResponse,
   type IssuedInvitation,
 } from '@ooh/contracts';
-import { appUser, invitation, membership, membershipRole, type Transaction } from '@ooh/db';
+import { appUser, invitation, membership, membershipRole, organisation, type Transaction } from '@ooh/db';
 import { and, eq, gt, isNull, sql } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
 import { AccessService } from '../../core/auth/access.service';
@@ -73,7 +73,10 @@ export class InvitationsService {
     return this.database.withTenant(
       { tenantId: principal.tenantId, actorUserId: principal.userId },
       async (tx) => {
-        const roles = await loadAssignableRoles(tx, principal, input.roleIds);
+        // With an organisation, the person represents that company: EXTERNAL, external roles only.
+        const kind = input.organisationId ? 'EXTERNAL' : 'INTERNAL';
+        const company = input.organisationId ? await this.liveOrganisation(tx, input.organisationId) : null;
+        const roles = await loadAssignableRoles(tx, principal, input.roleIds, kind);
 
         const [ensured] = await tx.execute<{ id: string | null }>(
           sql`SELECT invitation_ensure_user(${input.email}, ${input.displayName}) AS id`,
@@ -83,7 +86,13 @@ export class InvitationsService {
 
         const [created] = await tx
           .insert(membership)
-          .values({ tenantId: principal.tenantId, userId, kind: 'INTERNAL', status: 'INVITED' })
+          .values({
+            tenantId: principal.tenantId,
+            userId,
+            kind,
+            status: 'INVITED',
+            organisationId: company?.id ?? null,
+          })
           .onConflictDoNothing({ target: [membership.tenantId, membership.userId] })
           .returning({ id: membership.id, version: membership.version });
         if (!created) {
@@ -119,7 +128,11 @@ export class InvitationsService {
           action: 'membership.invited',
           subjectType: 'membership',
           subjectId: created.id,
-          metadata: { email: input.email.toLowerCase(), roles: roles.map((r) => r.key) },
+          metadata: {
+            email: input.email.toLowerCase(),
+            roles: roles.map((r) => r.key),
+            ...(company ? { organisationId: company.id } : {}),
+          },
           client,
         });
 
@@ -129,10 +142,11 @@ export class InvitationsService {
             userId,
             displayName: user?.displayName ?? input.displayName,
             email: user?.email ?? input.email,
-            kind: 'INTERNAL',
+            kind,
             status: 'INVITED',
             roles: roles.map(({ id, key, name }) => ({ id, key, name })),
             invitation: { expiresAt: issued.expiresAt },
+            organisation: company,
             version: created.version,
           },
           invitation: issued,
@@ -296,6 +310,27 @@ export class InvitationsService {
   }
 
   // ── internals ──────────────────────────────────────────────────────────────
+
+  /** The company an external member will represent: must exist in this tenant and be live. */
+  private async liveOrganisation(
+    tx: Transaction,
+    organisationId: string,
+  ): Promise<{ id: string; displayName: string }> {
+    const [company] = await tx
+      .select({
+        id: organisation.id,
+        displayName: organisation.displayName,
+        archivedAt: organisation.archivedAt,
+      })
+      .from(organisation)
+      .where(eq(organisation.id, organisationId));
+    if (!company || company.archivedAt) {
+      throw new AppError('VALIDATION_FAILED', 'Unknown or archived company.', {
+        errors: [{ path: 'organisationId', message: 'Unknown or archived company' }],
+      });
+    }
+    return { id: company.id, displayName: company.displayName };
+  }
 
   private async lockInvitedMembership(
     tx: Transaction,

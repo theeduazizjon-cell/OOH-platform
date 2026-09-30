@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -12,7 +13,10 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import {
+  type AccountOwnerCandidate,
   createOrganisationRequestSchema,
+  createRelationshipRequestSchema,
+  type OrganisationRelationshipItem,
   type OrganisationDetail,
   type OrganisationListItem,
   organisationListQuerySchema,
@@ -25,6 +29,7 @@ import { clientInfo } from '../../core/http/client-info';
 import { type IfMatch, IfMatchHeader, VersionEtagInterceptor } from '../../core/http/concurrency';
 import { parseWith } from '../../core/http/validation';
 import { OrganisationsService } from './organisations.service';
+import { RelationshipsService } from './relationships.service';
 
 /**
  * CRM companies (docs/architecture/10-api.md). POST runs duplicate detection: 409
@@ -34,7 +39,10 @@ import { OrganisationsService } from './organisations.service';
 @Controller('organisations')
 @UseInterceptors(VersionEtagInterceptor)
 export class OrganisationsController {
-  constructor(private readonly organisations: OrganisationsService) {}
+  constructor(
+    private readonly organisations: OrganisationsService,
+    private readonly relationships: RelationshipsService,
+  ) {}
 
   @Get()
   @RequirePermission('organisation.read')
@@ -43,6 +51,13 @@ export class OrganisationsController {
     @Query() query: unknown,
   ): Promise<Page<OrganisationListItem>> {
     return this.organisations.list(principal, parseWith(organisationListQuerySchema, query));
+  }
+
+  /** Declared before ':id'. Active internal members, for the account owner picker. */
+  @Get('account-owners')
+  @RequirePermission('organisation.update')
+  accountOwners(@CurrentPrincipal() principal: Principal): Promise<AccountOwnerCandidate[]> {
+    return this.organisations.accountOwners(principal);
   }
 
   @Get(':id')
@@ -96,5 +111,45 @@ export class OrganisationsController {
     @Req() request: FastifyRequest,
   ): Promise<OrganisationDetail> {
     return this.organisations.archive(principal, id, ifMatch, clientInfo(request));
+  }
+
+  // ── relationships (agency ↔ client, supplier, parent) ─────────────────────
+
+  @Get(':id/relationships')
+  @RequirePermission('organisation.read')
+  listRelationships(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id', ParseUUIDPipe) id: string,
+  ): Promise<OrganisationRelationshipItem[]> {
+    return this.relationships.list(principal, id);
+  }
+
+  /** {id} is the "from" side: {id} is the agency of / supplier to / parent of toOrganisationId. */
+  @Post(':id/relationships')
+  @RequirePermission('organisation.update')
+  addRelationship(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ): Promise<OrganisationRelationshipItem[]> {
+    return this.relationships.create(
+      principal,
+      id,
+      parseWith(createRelationshipRequestSchema, body),
+      clientInfo(request),
+    );
+  }
+
+  @Delete(':id/relationships/:relationshipId')
+  @HttpCode(204)
+  @RequirePermission('organisation.update')
+  removeRelationship(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('relationshipId', ParseUUIDPipe) relationshipId: string,
+    @Req() request: FastifyRequest,
+  ): Promise<void> {
+    return this.relationships.remove(principal, id, relationshipId, clientInfo(request));
   }
 }

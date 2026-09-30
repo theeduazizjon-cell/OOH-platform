@@ -17,6 +17,11 @@ export const inviteMemberRequestSchema = z.object({
   email: z.email().max(254),
   displayName: z.string().trim().min(1).max(120),
   roleIds: memberRoleIdsSchema,
+  /**
+   * Required with external roles: the company the person represents (their membership becomes
+   * EXTERNAL and ORGANISATION-scoped to it). Must be absent with internal roles.
+   */
+  organisationId: z.uuid().optional(),
 });
 export type InviteMemberRequest = z.infer<typeof inviteMemberRequestSchema>;
 
