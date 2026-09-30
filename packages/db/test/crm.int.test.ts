@@ -12,6 +12,7 @@ import {
   organisation,
   organisationClassification,
   organisationClassificationLink,
+  organisationRelationship,
 } from '../src/schema';
 import { withTenantTx } from '../src/tenant-context';
 import { appConnection, expectPgError, ownerConnection, SQLSTATE } from './helpers';
@@ -223,5 +224,38 @@ describe('contact', () => {
       inTenant(tenantA, (tx) => tx.delete(contact).where(eq(contact.id, person.id))),
       SQLSTATE.INSUFFICIENT_PRIVILEGE,
     );
+  });
+});
+
+describe('organisation relationship', () => {
+  it('links two companies of the same tenant once per kind, never a company to itself', async () => {
+    const agency = await createOrg(tenantA, { displayName: `Rel Agency ${suffix}` });
+    const client = await createOrg(tenantA, { displayName: `Rel Client ${suffix}` });
+    const link = (values: Partial<typeof organisationRelationship.$inferInsert>) =>
+      inTenant(tenantA, (tx) =>
+        tx.insert(organisationRelationship).values({
+          tenantId: tenantA,
+          fromOrganisationId: agency.id,
+          toOrganisationId: client.id,
+          kind: 'AGENCY_OF',
+          ...values,
+        }),
+      );
+    await link({});
+    await expectPgError(link({}), UNIQUE_VIOLATION);
+    await link({ kind: 'PARENT_OF' });
+    await expectPgError(link({ toOrganisationId: agency.id }), '23514');
+
+    const foreign = await createOrg(tenantB, { displayName: `Rel Foreign ${suffix}` });
+    await expectPgError(
+      owner.db.insert(organisationRelationship).values({
+        tenantId: tenantA,
+        fromOrganisationId: agency.id,
+        toOrganisationId: foreign.id,
+        kind: 'AGENCY_OF',
+      }),
+      SQLSTATE.FOREIGN_KEY_VIOLATION,
+    );
+    expect(await inTenant(tenantB, (tx) => tx.select().from(organisationRelationship))).toHaveLength(0);
   });
 });

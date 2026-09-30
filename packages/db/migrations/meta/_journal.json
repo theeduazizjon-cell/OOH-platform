@@ -85,6 +85,20 @@
       "when": 1790660314960,
       "tag": "0011_contact_rls_and_search",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1790762687575,
+      "tag": "0012_organisation_relationships",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1790762689490,
+      "tag": "0013_organisation_relationship_rls",
+      "breakpoints": true
     }
   ]
 }

@@ -178,3 +178,47 @@ export const contact = pgTable(
     ),
   ],
 );
+
+/**
+ * Directed link between two organisations of the tenant: `from` is the agency of / supplier to /
+ * parent of `to` (e.g. Agency X AGENCY_OF Carrefour). Drives agency visibility later (OPD-16).
+ */
+export const organisationRelationshipKind = pgEnum('organisation_relationship_kind', [
+  'AGENCY_OF',
+  'SUPPLIER_TO',
+  'PARENT_OF',
+]);
+
+export const organisationRelationship = pgTable(
+  'organisation_relationship',
+  {
+    id: primaryId(),
+    tenantId: tenantIdColumn().references(() => tenant.id),
+    fromOrganisationId: uuid('from_organisation_id').notNull(),
+    toOrganisationId: uuid('to_organisation_id').notNull(),
+    kind: organisationRelationshipKind('kind').notNull(),
+    createdByMembershipId: uuid('created_by_membership_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    unique('organisation_relationship_tenant_id_id_uq').on(t.tenantId, t.id),
+    unique('organisation_relationship_uq').on(t.tenantId, t.fromOrganisationId, t.toOrganisationId, t.kind),
+    foreignKey({
+      name: 'organisation_relationship_from_fk',
+      columns: [t.tenantId, t.fromOrganisationId],
+      foreignColumns: [organisation.tenantId, organisation.id],
+    }),
+    foreignKey({
+      name: 'organisation_relationship_to_fk',
+      columns: [t.tenantId, t.toOrganisationId],
+      foreignColumns: [organisation.tenantId, organisation.id],
+    }),
+    foreignKey({
+      name: 'organisation_relationship_created_by_fk',
+      columns: [t.tenantId, t.createdByMembershipId],
+      foreignColumns: [membership.tenantId, membership.id],
+    }),
+    index('organisation_relationship_to_idx').on(t.tenantId, t.toOrganisationId),
+    check('organisation_relationship_not_self_ck', sql`${t.fromOrganisationId} <> ${t.toOrganisationId}`),
+  ],
+);
