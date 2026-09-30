@@ -295,3 +295,38 @@ export interface AccountOwnerCandidate {
   membershipId: string;
   displayName: string;
 }
+
+// ── sales pipeline (defaults) ────────────────────────────────────────────────
+
+export const PIPELINE_STAGE_KINDS = ['OPEN', 'WON', 'LOST'] as const;
+export type PipelineStageKind = (typeof PIPELINE_STAGE_KINDS)[number];
+
+/**
+ * Installed once per tenant (tenants then edit it). Per OPD-01 the first OPEN stages are the lead
+ * stages (R§7 pipeline), so there is no separate lead entity.
+ */
+export const DEFAULT_PIPELINE = {
+  name: 'Sales pipeline',
+  stages: [
+    { name: 'Lead', kind: 'OPEN', probability: 10 },
+    { name: 'Contacted', kind: 'OPEN', probability: 20 },
+    { name: 'Qualified', kind: 'OPEN', probability: 30 },
+    { name: 'Proposal', kind: 'OPEN', probability: 50 },
+    { name: 'Negotiation', kind: 'OPEN', probability: 75 },
+    { name: 'Won', kind: 'WON', probability: 100 },
+    { name: 'Lost', kind: 'LOST', probability: 0 },
+  ],
+} as const satisfies {
+  name: string;
+  stages: readonly { name: string; kind: PipelineStageKind; probability: number }[];
+};
+
+/** Timeline entry kinds. `stage_change` is written by the platform when an opportunity moves. */
+export const DEFAULT_ACTIVITY_TYPES = [
+  { key: 'call', name: 'Call', isSystem: false },
+  { key: 'meeting', name: 'Meeting', isSystem: false },
+  { key: 'email', name: 'Email', isSystem: false },
+  { key: 'note', name: 'Note', isSystem: false },
+  { key: 'stage_change', name: 'Stage change', isSystem: true },
+] as const;
+export const STAGE_CHANGE_ACTIVITY_TYPE = 'stage_change';

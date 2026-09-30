@@ -7,8 +7,11 @@ import { sql } from 'drizzle-orm';
 import {
   boolean,
   check,
+  date,
   foreignKey,
   index,
+  integer,
+  numeric,
   pgEnum,
   pgTable,
   primaryKey,
@@ -19,7 +22,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { archivedAt, citext, primaryId, tenantIdColumn, timestamps, versionColumn } from './columns';
-import { organisationClassification } from './config';
+import { activityType, organisationClassification, pipelineStage, pipelineStageKind } from './config';
 import { membership, tenant } from './identity';
 
 export const organisation = pgTable(
@@ -154,6 +157,8 @@ export const contact = pgTable(
   },
   (t) => [
     unique('contact_tenant_id_id_uq').on(t.tenantId, t.id),
+    // Target of opportunity/activity (tenant_id, organisation_id, contact_id): same company guaranteed.
+    unique('contact_tenant_organisation_id_uq').on(t.tenantId, t.organisationId, t.id),
     foreignKey({
       name: 'contact_organisation_fk',
       columns: [t.tenantId, t.organisationId],
@@ -220,5 +225,140 @@ export const organisationRelationship = pgTable(
     }),
     index('organisation_relationship_to_idx').on(t.tenantId, t.toOrganisationId),
     check('organisation_relationship_not_self_ck', sql`${t.fromOrganisationId} <> ${t.toOrganisationId}`),
+  ],
+);
+
+/**
+ * A sales opportunity (06-state-machines.md §2). `stage_kind` copies the stage's kind through a
+ * composite FK, so it can't drift, and lets the database enforce the state machine's preconditions:
+ * WON needs a value and close date, LOST a reason, and closed_at is set exactly when closed.
+ * Amounts are net of VAT in RON or EUR (OPD-11).
+ */
+export const opportunity = pgTable(
+  'opportunity',
+  {
+    id: primaryId(),
+    tenantId: tenantIdColumn().references(() => tenant.id),
+    organisationId: uuid('organisation_id').notNull(),
+    contactId: uuid('contact_id'),
+    /** Drives the OWN permission scope (Sales edit and close their own opportunities). */
+    ownerMembershipId: uuid('owner_membership_id').notNull(),
+    name: text('name').notNull(),
+    estimatedValue: numeric('estimated_value', { precision: 14, scale: 2 }),
+    currency: text('currency').notNull().default('RON'),
+    expectedCloseDate: date('expected_close_date', { mode: 'string' }),
+    probability: integer('probability'),
+    pipelineStageId: uuid('pipeline_stage_id').notNull(),
+    stageKind: pipelineStageKind('stage_kind').notNull(),
+    source: text('source'),
+    nextAction: text('next_action'),
+    nextFollowUpDate: date('next_follow_up_date', { mode: 'string' }),
+    lostReason: text('lost_reason'),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+    createdByMembershipId: uuid('created_by_membership_id'),
+    archivedAt: archivedAt(),
+    ...timestamps(),
+    version: versionColumn(),
+  },
+  (t) => [
+    unique('opportunity_tenant_id_id_uq').on(t.tenantId, t.id),
+    // Target of activity (tenant_id, organisation_id, opportunity_id): same company guaranteed.
+    unique('opportunity_tenant_organisation_id_uq').on(t.tenantId, t.organisationId, t.id),
+    foreignKey({
+      name: 'opportunity_organisation_fk',
+      columns: [t.tenantId, t.organisationId],
+      foreignColumns: [organisation.tenantId, organisation.id],
+    }),
+    foreignKey({
+      name: 'opportunity_contact_fk',
+      columns: [t.tenantId, t.organisationId, t.contactId],
+      foreignColumns: [contact.tenantId, contact.organisationId, contact.id],
+    }),
+    foreignKey({
+      name: 'opportunity_owner_fk',
+      columns: [t.tenantId, t.ownerMembershipId],
+      foreignColumns: [membership.tenantId, membership.id],
+    }),
+    foreignKey({
+      name: 'opportunity_created_by_fk',
+      columns: [t.tenantId, t.createdByMembershipId],
+      foreignColumns: [membership.tenantId, membership.id],
+    }),
+    foreignKey({
+      name: 'opportunity_stage_fk',
+      columns: [t.tenantId, t.pipelineStageId, t.stageKind],
+      foreignColumns: [pipelineStage.tenantId, pipelineStage.id, pipelineStage.kind],
+    }),
+    index('opportunity_stage_idx').on(t.tenantId, t.pipelineStageId),
+    index('opportunity_organisation_idx').on(t.tenantId, t.organisationId),
+    index('opportunity_owner_idx').on(t.tenantId, t.ownerMembershipId),
+    check('opportunity_name_ck', sql`length(btrim(${t.name})) > 0`),
+    check('opportunity_currency_ck', sql`${t.currency} IN ('RON', 'EUR')`),
+    check('opportunity_value_ck', sql`${t.estimatedValue} IS NULL OR ${t.estimatedValue} >= 0`),
+    check('opportunity_probability_ck', sql`${t.probability} IS NULL OR ${t.probability} BETWEEN 0 AND 100`),
+    check(
+      'opportunity_won_ck',
+      sql`${t.stageKind} <> 'WON' OR (${t.estimatedValue} IS NOT NULL AND ${t.expectedCloseDate} IS NOT NULL)`,
+    ),
+    check(
+      'opportunity_lost_ck',
+      sql`${t.stageKind} <> 'LOST' OR length(btrim(coalesce(${t.lostReason}, ''))) > 0`,
+    ),
+    check('opportunity_closed_at_ck', sql`(${t.stageKind} = 'OPEN') = (${t.closedAt} IS NULL)`),
+  ],
+);
+
+/**
+ * Timeline entry on a company (docs/architecture/05-domain-model.md §crm, Hist): calls, meetings,
+ * notes, and system entries such as stage changes. Contact and opportunity, when set, belong to the
+ * same company (composite FKs).
+ */
+export const activity = pgTable(
+  'activity',
+  {
+    id: primaryId(),
+    tenantId: tenantIdColumn().references(() => tenant.id),
+    organisationId: uuid('organisation_id').notNull(),
+    contactId: uuid('contact_id'),
+    opportunityId: uuid('opportunity_id'),
+    activityTypeId: uuid('activity_type_id').notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+    subject: text('subject').notNull(),
+    body: text('body'),
+    /** Null for entries written by the platform (e.g. stage changes). Drives the OWN scope. */
+    authorMembershipId: uuid('author_membership_id'),
+    ...timestamps(),
+    version: versionColumn(),
+  },
+  (t) => [
+    unique('activity_tenant_id_id_uq').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'activity_organisation_fk',
+      columns: [t.tenantId, t.organisationId],
+      foreignColumns: [organisation.tenantId, organisation.id],
+    }),
+    foreignKey({
+      name: 'activity_contact_fk',
+      columns: [t.tenantId, t.organisationId, t.contactId],
+      foreignColumns: [contact.tenantId, contact.organisationId, contact.id],
+    }),
+    foreignKey({
+      name: 'activity_opportunity_fk',
+      columns: [t.tenantId, t.organisationId, t.opportunityId],
+      foreignColumns: [opportunity.tenantId, opportunity.organisationId, opportunity.id],
+    }),
+    foreignKey({
+      name: 'activity_type_fk',
+      columns: [t.tenantId, t.activityTypeId],
+      foreignColumns: [activityType.tenantId, activityType.id],
+    }),
+    foreignKey({
+      name: 'activity_author_fk',
+      columns: [t.tenantId, t.authorMembershipId],
+      foreignColumns: [membership.tenantId, membership.id],
+    }),
+    index('activity_organisation_time_idx').on(t.tenantId, t.organisationId, t.occurredAt),
+    index('activity_opportunity_idx').on(t.tenantId, t.opportunityId),
+    check('activity_subject_ck', sql`length(btrim(${t.subject})) > 0`),
   ],
 );

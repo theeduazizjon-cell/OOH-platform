@@ -1,7 +1,20 @@
-import { DEFAULT_ORGANISATION_CLASSIFICATIONS, ROLE_TEMPLATES } from '@ooh/contracts';
+import {
+  DEFAULT_ACTIVITY_TYPES,
+  DEFAULT_ORGANISATION_CLASSIFICATIONS,
+  DEFAULT_PIPELINE,
+  ROLE_TEMPLATES,
+} from '@ooh/contracts';
 import { and, eq } from 'drizzle-orm';
 import type { Database, Transaction } from './client';
-import { organisationClassification, role, rolePermission, tenant } from './schema';
+import {
+  activityType,
+  organisationClassification,
+  pipeline,
+  pipelineStage,
+  role,
+  rolePermission,
+  tenant,
+} from './schema';
 
 export interface ProvisionTenantInput {
   readonly name: string;
@@ -27,6 +40,8 @@ export async function provisionTenant(
     if (!row) throw new Error(`Tenant ${input.slug} could not be created`);
     await installSystemRoles(tx, row.id);
     await installDefaultClassifications(tx, row.id);
+    await installDefaultActivityTypes(tx, row.id);
+    await installDefaultPipeline(tx, row.id);
     return { tenantId: row.id };
   });
 }
@@ -76,4 +91,43 @@ async function installSystemRoles(tx: Transaction, tenantId: string): Promise<vo
       })),
     );
   }
+}
+
+async function installDefaultActivityTypes(tx: Transaction, tenantId: string): Promise<void> {
+  await tx
+    .insert(activityType)
+    .values(
+      DEFAULT_ACTIVITY_TYPES.map((t, index) => ({
+        tenantId,
+        key: t.key,
+        name: t.name,
+        isSystem: t.isSystem,
+        sortOrder: (index + 1) * 10,
+      })),
+    )
+    .onConflictDoNothing({ target: [activityType.tenantId, activityType.key] });
+}
+
+/** Only for a tenant without any pipeline: the tenant owns its pipelines after that. */
+async function installDefaultPipeline(tx: Transaction, tenantId: string): Promise<void> {
+  const [existing] = await tx
+    .select({ id: pipeline.id })
+    .from(pipeline)
+    .where(eq(pipeline.tenantId, tenantId))
+    .limit(1);
+  if (existing) return;
+  const [created] = await tx
+    .insert(pipeline)
+    .values({ tenantId, name: DEFAULT_PIPELINE.name, isDefault: true })
+    .returning({ id: pipeline.id });
+  await tx.insert(pipelineStage).values(
+    DEFAULT_PIPELINE.stages.map((stage, index) => ({
+      tenantId,
+      pipelineId: created!.id,
+      name: stage.name,
+      kind: stage.kind,
+      probability: stage.probability,
+      position: (index + 1) * 10,
+    })),
+  );
 }

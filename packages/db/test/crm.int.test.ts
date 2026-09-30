@@ -6,6 +6,8 @@ import { and, eq, sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { provisionTenant } from '../src/provisioning';
 import {
+  activity,
+  activityType,
   appUser,
   contact,
   membership,
@@ -13,6 +15,9 @@ import {
   organisationClassification,
   organisationClassificationLink,
   organisationRelationship,
+  opportunity,
+  pipeline,
+  pipelineStage,
 } from '../src/schema';
 import { withTenantTx } from '../src/tenant-context';
 import { appConnection, expectPgError, ownerConnection, SQLSTATE } from './helpers';
@@ -257,5 +262,158 @@ describe('organisation relationship', () => {
       SQLSTATE.FOREIGN_KEY_VIOLATION,
     );
     expect(await inTenant(tenantB, (tx) => tx.select().from(organisationRelationship))).toHaveLength(0);
+  });
+});
+
+describe('sales pipeline', () => {
+  const stagesOf = async (tenantId: string) => {
+    const [p] = await owner.db.select().from(pipeline).where(eq(pipeline.tenantId, tenantId));
+    const stages = await owner.db.select().from(pipelineStage).where(eq(pipelineStage.pipelineId, p!.id));
+    const byName = (name: string) => stages.find((s) => s.name === name)!;
+    return { pipelineId: p!.id, lead: byName('Lead'), won: byName('Won'), lost: byName('Lost') };
+  };
+
+  it('provisions one default pipeline with lead stages first, and the activity types', async () => {
+    const pipelines = await owner.db.select().from(pipeline).where(eq(pipeline.tenantId, tenantA));
+    expect(pipelines).toEqual([expect.objectContaining({ name: 'Sales pipeline', isDefault: true })]);
+    const stages = await owner.db
+      .select({ name: pipelineStage.name, kind: pipelineStage.kind })
+      .from(pipelineStage)
+      .where(eq(pipelineStage.pipelineId, pipelines[0]!.id))
+      .orderBy(pipelineStage.position);
+    expect(stages.map((s) => s.name)).toEqual([
+      'Lead',
+      'Contacted',
+      'Qualified',
+      'Proposal',
+      'Negotiation',
+      'Won',
+      'Lost',
+    ]);
+    // Provisioning again adds nothing.
+    await provisionTenant(owner.db, { name: 'CRM A', slug: `crm-a-${suffix}` });
+    expect(await owner.db.select().from(pipeline).where(eq(pipeline.tenantId, tenantA))).toHaveLength(1);
+    const types = await owner.db
+      .select({ key: activityType.key })
+      .from(activityType)
+      .where(eq(activityType.tenantId, tenantA));
+    expect(types.map((t) => t.key)).toEqual(expect.arrayContaining(['call', 'meeting', 'stage_change']));
+  });
+
+  it('allows exactly one WON and one LOST stage per pipeline', async () => {
+    const { pipelineId } = await stagesOf(tenantA);
+    await expectPgError(
+      owner.db
+        .insert(pipelineStage)
+        .values({ tenantId: tenantA, pipelineId, name: 'Won again', kind: 'WON', position: 99 }),
+      UNIQUE_VIOLATION,
+    );
+  });
+
+  it('enforces the opportunity state machine preconditions in the database', async () => {
+    const { lead, won, lost } = await stagesOf(tenantA);
+    const org = await createOrg(tenantA, { displayName: `Pipeline Co ${suffix}` });
+    const [m] = await owner.db
+      .select({ id: membership.id })
+      .from(membership)
+      .where(eq(membership.tenantId, tenantA))
+      .limit(1);
+    const [user] = m
+      ? [m]
+      : await owner.db
+          .insert(appUser)
+          .values({ email: `owner-${suffix}@example.com`, displayName: 'Owner' })
+          .returning({ id: appUser.id })
+          .then(async ([u]) =>
+            owner.db
+              .insert(membership)
+              .values({ tenantId: tenantA, userId: u!.id, status: 'ACTIVE' })
+              .returning({ id: membership.id }),
+          );
+    const base = { tenantId: tenantA, organisationId: org.id, ownerMembershipId: user!.id, name: 'Deal' };
+    const insert = (values: Partial<typeof opportunity.$inferInsert>) =>
+      inTenant(tenantA, (tx) =>
+        tx
+          .insert(opportunity)
+          .values({ ...base, pipelineStageId: lead.id, stageKind: 'OPEN', ...values })
+          .returning(),
+      ).then((rows) => rows[0]!);
+
+    const open = await insert({});
+    const CHECK = '23514';
+    // The kind copy must match the stage (composite FK).
+    // (Valid WON data, so only the stage/kind mismatch can fail: CHECKs fire before FKs.)
+    await expectPgError(
+      insert({
+        pipelineStageId: lead.id,
+        stageKind: 'WON',
+        estimatedValue: '1.00',
+        expectedCloseDate: '2026-12-01',
+        closedAt: new Date(),
+      }),
+      SQLSTATE.FOREIGN_KEY_VIOLATION,
+    );
+    // WON needs a value and a close date, and closed_at.
+    await expectPgError(insert({ pipelineStageId: won.id, stageKind: 'WON', closedAt: new Date() }), CHECK);
+    await insert({
+      pipelineStageId: won.id,
+      stageKind: 'WON',
+      estimatedValue: '12000.00',
+      expectedCloseDate: '2026-12-01',
+      closedAt: new Date(),
+    });
+    // LOST needs a reason; OPEN can't have closed_at.
+    await expectPgError(insert({ pipelineStageId: lost.id, stageKind: 'LOST', closedAt: new Date() }), CHECK);
+    await expectPgError(insert({ closedAt: new Date() }), CHECK);
+    await expectPgError(insert({ currency: 'USD' }), CHECK);
+    expect(open.stageKind).toBe('OPEN');
+  });
+
+  it('keeps contact, opportunity and activity on the same company', async () => {
+    const { lead } = await stagesOf(tenantA);
+    const orgA = await createOrg(tenantA, { displayName: `Same Co ${suffix}` });
+    const orgOther = await createOrg(tenantA, { displayName: `Other Co ${suffix}` });
+    const [person] = await inTenant(tenantA, (tx) =>
+      tx
+        .insert(contact)
+        .values({ tenantId: tenantA, organisationId: orgOther.id, firstName: 'Elsewhere' })
+        .returning(),
+    );
+    const [m] = await owner.db
+      .select({ id: membership.id })
+      .from(membership)
+      .where(eq(membership.tenantId, tenantA))
+      .limit(1);
+    // A contact of another company can't be the opportunity's contact.
+    await expectPgError(
+      inTenant(tenantA, (tx) =>
+        tx.insert(opportunity).values({
+          tenantId: tenantA,
+          organisationId: orgA.id,
+          contactId: person!.id,
+          ownerMembershipId: m!.id,
+          name: 'Mismatch',
+          pipelineStageId: lead.id,
+          stageKind: 'OPEN',
+        }),
+      ),
+      SQLSTATE.FOREIGN_KEY_VIOLATION,
+    );
+    const [note] = await owner.db
+      .select({ id: activityType.id })
+      .from(activityType)
+      .where(and(eq(activityType.tenantId, tenantA), eq(activityType.key, 'note')));
+    await expectPgError(
+      inTenant(tenantA, (tx) =>
+        tx.insert(activity).values({
+          tenantId: tenantA,
+          organisationId: orgA.id,
+          contactId: person!.id,
+          activityTypeId: note!.id,
+          subject: 'Mismatch',
+        }),
+      ),
+      SQLSTATE.FOREIGN_KEY_VIOLATION,
+    );
   });
 });
