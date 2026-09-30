@@ -1,4 +1,5 @@
 import type {
+  AccountOwnerCandidate,
   ClassificationItem,
   CreateOrganisationRequest,
   DuplicateMatch,
@@ -14,7 +15,10 @@ import { ApiError } from '@/lib/api';
 export type CompanyFormValues = Omit<
   CreateOrganisationRequest,
   'force' | 'forceReason' | 'accountOwnerMembershipId'
->;
+> & {
+  /** Absent: unchanged on edit, the creator on create. */
+  accountOwnerMembershipId?: string;
+};
 
 interface DuplicateState {
   matches: DuplicateMatch[];
@@ -52,6 +56,9 @@ function readValues(form: HTMLFormElement): CompanyFormValues {
     website: text('website') || null,
     notes: text('notes') || null,
     classificationIds: data.getAll('classificationIds').filter((v): v is string => typeof v === 'string'),
+    ...(text('accountOwnerMembershipId')
+      ? { accountOwnerMembershipId: text('accountOwnerMembershipId') }
+      : {}),
   };
 }
 
@@ -66,6 +73,7 @@ export function CompanyForm({
   onSubmit,
   onCancel,
   onOpenExisting,
+  accountOwners,
 }: {
   initial?: OrganisationDetail;
   classifications: readonly ClassificationItem[];
@@ -74,6 +82,8 @@ export function CompanyForm({
   onCancel: () => void;
   /** Lets the user jump to a matching company instead of creating a duplicate. */
   onOpenExisting?: (id: string) => void;
+  /** Offered as an account owner picker when given (needs organisation.update). */
+  accountOwners?: readonly AccountOwnerCandidate[];
 }) {
   const [error, setError] = useState<string | null>(null);
   const [duplicate, setDuplicate] = useState<DuplicateState | null>(null);
@@ -153,6 +163,31 @@ export function CompanyForm({
             />
           </div>
         </div>
+        {accountOwners && (
+          <div className="space-y-1.5 sm:max-w-sm">
+            <Label htmlFor="company-accountOwner">Account owner</Label>
+            <select
+              id="company-accountOwner"
+              name="accountOwnerMembershipId"
+              defaultValue={initial?.accountOwner?.membershipId ?? ''}
+              className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+            >
+              {!initial && <option value="">Me</option>}
+              {/* Keep a current owner who is no longer a candidate (e.g. suspended) selectable. */}
+              {initial?.accountOwner &&
+                !accountOwners.some((o) => o.membershipId === initial.accountOwner?.membershipId) && (
+                  <option value={initial.accountOwner.membershipId}>
+                    {initial.accountOwner.displayName}
+                  </option>
+                )}
+              {accountOwners.map((o) => (
+                <option key={o.membershipId} value={o.membershipId}>
+                  {o.displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium text-slate-700">Classifications</legend>
           <div className="flex flex-wrap gap-x-4 gap-y-2">

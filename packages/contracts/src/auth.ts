@@ -73,6 +73,8 @@ export interface MembershipListItem {
   roles: { id: string; key: string; name: string }[];
   /** The pending invitation of an INVITED member (null once accepted, or when none is pending). */
   invitation: { expiresAt: string } | null;
+  /** The organisation an EXTERNAL member represents (client, agency, supplier…). */
+  organisation: { id: string; displayName: string } | null;
   /** Optimistic-locking version; send it back as `If-Match: etagOf(version)` when changing the member. */
   version: number;
 }

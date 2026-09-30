@@ -103,12 +103,16 @@ Comments (`comment.visibility = INTERNAL | EXTERNAL`): external users only ever 
    user administrator can't act on a Company Admin. Nobody manages their own membership, so a tenant can't lock
    out its last administrator this way. Roles follow the same rule: nobody creates or edits a role granting more
    than they hold, nor edits or deletes a role that does. Enforced in the API.
+   One narrow exemption: external-party actions (`study.decide`, `production.update_status`) belong to the
+   external party by design, so internal staff never hold them. They are exempt from this check only when
+   assigning to, or managing, an EXTERNAL member at ORGANISATION scope; otherwise no admin could ever invite a
+   client or supplier. Internal roles carrying them are still refused.
 7. **Always an administrator**: a role change (edit, disable) that would leave no active member holding both
    `roles.manage` and `users.update` is refused (409), so a tenant can always repair its own access setup.
 
 ## 6. Portal access (external)
 
-- External users are invited by email into a membership bound to an organisation. Until organisations exist (CRM, M2), invitations accept internal roles only. For MVP they get full
+- External users are invited by email into a membership bound to an organisation. Invitations with an `organisationId` create such an EXTERNAL membership with external roles only; internal roles refuse a company, and roles never mix. For MVP they get full
   accounts with password or magic-link login. OPD-15 decides whether clients can approve through one-time signed links
   without an account.
 - An agency user sees campaigns where `campaign.agency_organisation_id = membership.organisation_id`. OPD-16 covers

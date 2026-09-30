@@ -44,7 +44,7 @@ export function EditRolesForm({
   return (
     <form className="space-y-4" onSubmit={(event) => void handleSubmit(event)} noValidate>
       {error && <Alert>{error}</Alert>}
-      <RoleCheckboxes roles={roles} selected={member.roles.map((r) => r.id)} />
+      <RoleCheckboxes roles={roles} selected={member.roles.map((r) => r.id)} kind={member.kind} />
       {member.status === 'ACTIVE' && (
         <p className="text-xs text-slate-500">
           {member.displayName}’s open sessions switch to the new permissions on their next action.

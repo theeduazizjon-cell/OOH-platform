@@ -1,23 +1,33 @@
 import type { RoleListItem } from '@ooh/contracts';
 
-/** Roles a member can be given today: active and internal (external members need the CRM). */
-export function assignableRoles(roles: readonly RoleListItem[]): RoleListItem[] {
-  return roles.filter((r) => r.active && !r.isExternal);
+export type MemberKind = 'INTERNAL' | 'EXTERNAL';
+
+/**
+ * Roles a member can be given: active, and internal roles for staff or external roles for people
+ * representing a company (the API refuses mixing them).
+ */
+export function assignableRoles(
+  roles: readonly RoleListItem[],
+  kind: MemberKind = 'INTERNAL',
+): RoleListItem[] {
+  return roles.filter((r) => r.active && r.isExternal === (kind === 'EXTERNAL'));
 }
 
 /** Role picker for the invite and edit-roles forms. Submits as repeated `roleIds` form fields. */
 export function RoleCheckboxes({
   roles,
   selected = [],
+  kind = 'INTERNAL',
 }: {
   roles: readonly RoleListItem[];
   selected?: readonly string[];
+  kind?: MemberKind;
 }) {
   return (
     <fieldset className="space-y-2">
       <legend className="text-sm font-medium text-slate-700">Roles</legend>
       <div className="grid gap-2 sm:grid-cols-2">
-        {assignableRoles(roles).map((r) => (
+        {assignableRoles(roles, kind).map((r) => (
           <label key={r.id} className="flex items-start gap-2 text-sm">
             <input
               type="checkbox"
@@ -33,9 +43,6 @@ export function RoleCheckboxes({
           </label>
         ))}
       </div>
-      <p className="text-xs text-slate-500">
-        Client, agency and supplier roles become available once companies are managed in the CRM.
-      </p>
     </fieldset>
   );
 }

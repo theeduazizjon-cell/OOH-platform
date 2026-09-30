@@ -35,8 +35,16 @@ const widest = (key: PermissionKey): PermissionScope => {
 const atWidest = (keys: PermissionKey[]): PermissionGrant[] =>
   keys.map((permission) => ({ permission, scope: widest(permission) }));
 
-/** Actions that belong to the external party, never to internal admins. */
-const EXTERNAL_PARTY_ACTIONS: PermissionKey[] = ['study.decide', 'production.update_status'];
+/**
+ * Actions that belong to the external party (a client deciding on a study, a supplier updating its
+ * production order), never to internal staff. Internal admins therefore don't hold them, and may
+ * still assign external roles that carry them at ORGANISATION scope (see the role-assignment policy).
+ */
+export const EXTERNAL_PARTY_PERMISSIONS: readonly PermissionKey[] = [
+  'study.decide',
+  'production.update_status',
+];
+const EXTERNAL_PARTY_ACTIONS = EXTERNAL_PARTY_PERMISSIONS;
 
 export const ROLE_TEMPLATES: readonly RoleTemplate[] = [
   {

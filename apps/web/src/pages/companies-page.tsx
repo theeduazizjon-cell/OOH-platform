@@ -1,4 +1,5 @@
 import {
+  type AccountOwnerCandidate,
   type ClassificationItem,
   etagOf,
   IF_MATCH_HEADER,
@@ -16,6 +17,7 @@ import { useAuth } from '@/lib/auth';
 import { hasPermission, useMe } from '@/lib/me';
 import { CompanyContacts } from './company-contacts';
 import { CompanyForm, type CompanyFormValues } from './company-form';
+import { CompanyRelationships } from './company-relationships';
 import { CrmTabs } from './crm-tabs';
 
 export const COMPANY_CONFLICT_MESSAGE =
@@ -58,6 +60,11 @@ export function CompaniesPage() {
       return api.request<Page<OrganisationListItem>>(`/organisations?${params.toString()}`);
     },
     getNextPageParam: (last) => last.page.nextCursor,
+  });
+  const accountOwners = useQuery({
+    queryKey: ['account-owners', session?.tenantId],
+    queryFn: () => api.request<AccountOwnerCandidate[]>('/organisations/account-owners'),
+    enabled: can.update && panel !== null,
   });
   const opened = useQuery({
     queryKey: ['organisation', panel?.kind === 'open' ? panel.id : null],
@@ -140,6 +147,7 @@ export function CompaniesPage() {
           <h2 className="mb-3 text-base font-semibold">New company</h2>
           <CompanyForm
             classifications={classificationList}
+            accountOwners={accountOwners.data}
             submitLabel="Create company"
             onSubmit={create}
             onCancel={() => setPanel(null)}
@@ -165,6 +173,7 @@ export function CompaniesPage() {
                 key={`${company.id}:${company.version}`}
                 initial={company}
                 classifications={classificationList}
+                accountOwners={accountOwners.data}
                 submitLabel="Save changes"
                 onSubmit={async (values) => {
                   await change(company, '', values);
@@ -176,6 +185,7 @@ export function CompaniesPage() {
                 <p className="mt-2 text-xs text-slate-500">You can view but not edit companies.</p>
               )}
               <CompanyContacts organisationId={company.id} archived={Boolean(company.archivedAt)} />
+              <CompanyRelationships organisationId={company.id} archived={Boolean(company.archivedAt)} />
             </>
           )}
         </Card>

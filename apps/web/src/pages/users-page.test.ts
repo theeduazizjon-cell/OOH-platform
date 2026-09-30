@@ -13,6 +13,7 @@ const member = (status: MembershipListItem['status'], expiresAt?: string): Membe
   status,
   roles: [],
   invitation: expiresAt ? { expiresAt } : null,
+  organisation: null,
   version: 1,
 });
 
