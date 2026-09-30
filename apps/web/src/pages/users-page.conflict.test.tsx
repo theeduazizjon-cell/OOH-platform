@@ -26,6 +26,7 @@ const ana = (version: number): MembershipListItem => ({
   status: 'ACTIVE',
   roles: [],
   invitation: null,
+  organisation: null,
   version,
 });
 const page = (member: MembershipListItem): Page<MembershipListItem> => ({

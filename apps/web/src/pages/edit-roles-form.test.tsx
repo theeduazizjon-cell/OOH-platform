@@ -28,6 +28,7 @@ const member: MembershipListItem = {
   status: 'ACTIVE',
   roles: [{ id: 'r1', key: 'buyer', name: 'Buyer' }],
   invitation: null,
+  organisation: null,
   version: 1,
 };
 

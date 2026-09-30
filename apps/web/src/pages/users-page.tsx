@@ -183,7 +183,12 @@ export function UsersPage() {
           {roles.isLoading && <p className="text-sm text-slate-500">Loading roles…</p>}
           {roles.error && <Alert>{roles.error.message}</Alert>}
           {roles.data && panel?.kind === 'invite' && (
-            <InviteMemberForm roles={roles.data.data} onSubmit={invite} onCancel={() => setPanel(null)} />
+            <InviteMemberForm
+              roles={roles.data.data}
+              canPickCompany={hasPermission(me, 'organisation.read')}
+              onSubmit={invite}
+              onCancel={() => setPanel(null)}
+            />
           )}
           {roles.data && editing && (
             <EditRolesForm
@@ -247,7 +252,12 @@ export function UsersPage() {
                       {isSelf && <span className="ml-2 text-xs font-normal text-slate-500">(you)</span>}
                     </td>
                     <td className="px-4 py-2">{m.email}</td>
-                    <td className="px-4 py-2">{m.kind === 'INTERNAL' ? 'Internal' : 'External'}</td>
+                    <td className="px-4 py-2">
+                      {m.kind === 'INTERNAL' ? 'Internal' : 'External'}
+                      {m.organisation && (
+                        <span className="block text-xs text-slate-500">{m.organisation.displayName}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2">{memberStatusLabel(m)}</td>
                     <td className="px-4 py-2">{m.roles.map((r) => r.name).join(', ')}</td>
                     {showActions && (
