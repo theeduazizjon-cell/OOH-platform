@@ -7,6 +7,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { provisionTenant } from '../src/provisioning';
 import {
   appUser,
+  contact,
   membership,
   organisation,
   organisationClassification,
@@ -159,5 +160,68 @@ describe('membership → organisation', () => {
       .values({ tenantId: tenantA, userId: user!.id, kind: 'EXTERNAL', organisationId: orgA.id })
       .returning({ organisationId: membership.organisationId });
     expect(m?.organisationId).toBe(orgA.id);
+  });
+});
+
+describe('contact', () => {
+  const addContact = (
+    tenantId: string,
+    values: Partial<typeof contact.$inferInsert> & { organisationId: string },
+  ) =>
+    inTenant(tenantId, (tx) =>
+      tx
+        .insert(contact)
+        .values({ tenantId, firstName: 'Ana', ...values })
+        .returning(),
+    ).then((rows) => rows[0]!);
+
+  it('allows one live primary contact and one live contact per email per organisation', async () => {
+    const org = await createOrg(tenantA, { displayName: `Contacts Co ${suffix}` });
+    const primary = await addContact(tenantA, { organisationId: org.id, isPrimary: true, email: 'ana@x.ro' });
+    await expectPgError(addContact(tenantA, { organisationId: org.id, isPrimary: true }), UNIQUE_VIOLATION);
+    // Email comparison is case-insensitive (citext).
+    await expectPgError(addContact(tenantA, { organisationId: org.id, email: 'ANA@X.RO' }), UNIQUE_VIOLATION);
+    // Once archived, both are free again.
+    await inTenant(tenantA, (tx) =>
+      tx.update(contact).set({ archivedAt: new Date() }).where(eq(contact.id, primary.id)),
+    );
+    await addContact(tenantA, { organisationId: org.id, isPrimary: true, email: 'ana@x.ro' });
+  });
+
+  it('requires a source and time once consent is stated, and derives newsletter eligibility', async () => {
+    const org = await createOrg(tenantA, { displayName: `Consent Co ${suffix}` });
+    await expectPgError(addContact(tenantA, { organisationId: org.id, consentStatus: 'OPTED_IN' }), '23514');
+    const optedIn = await addContact(tenantA, {
+      organisationId: org.id,
+      consentStatus: 'OPTED_IN',
+      consentSource: 'event form',
+      consentAt: new Date(),
+    });
+    expect(optedIn.newsletterEligible).toBe(true);
+    const [unsubscribed] = await inTenant(tenantA, (tx) =>
+      tx.update(contact).set({ unsubscribedAt: new Date() }).where(eq(contact.id, optedIn.id)).returning(),
+    );
+    expect(unsubscribed?.newsletterEligible).toBe(false);
+    expect(
+      (await addContact(tenantA, { organisationId: org.id, firstName: 'Ștefan', lastName: 'Popescu' }))
+        .nameKey,
+    ).toBe('stefan popescu');
+  });
+
+  it('belongs to an organisation of the same tenant, is isolated, and is never deleted by the app', async () => {
+    const orgB = await createOrg(tenantB, { displayName: `B Co ${suffix}` });
+    await expectPgError(
+      owner.db.insert(contact).values({ tenantId: tenantA, organisationId: orgB.id, firstName: 'X' }),
+      SQLSTATE.FOREIGN_KEY_VIOLATION,
+    );
+    const org = await createOrg(tenantA, { displayName: `Private Co ${suffix}` });
+    const person = await addContact(tenantA, { organisationId: org.id });
+    expect(
+      await inTenant(tenantB, (tx) => tx.select().from(contact).where(eq(contact.id, person.id))),
+    ).toHaveLength(0);
+    await expectPgError(
+      inTenant(tenantA, (tx) => tx.delete(contact).where(eq(contact.id, person.id))),
+      SQLSTATE.INSUFFICIENT_PRIVILEGE,
+    );
   });
 });

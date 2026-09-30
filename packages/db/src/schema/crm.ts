@@ -5,9 +5,11 @@
  */
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   foreignKey,
   index,
+  pgEnum,
   pgTable,
   primaryKey,
   text,
@@ -16,7 +18,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import { archivedAt, primaryId, tenantIdColumn, timestamps, versionColumn } from './columns';
+import { archivedAt, citext, primaryId, tenantIdColumn, timestamps, versionColumn } from './columns';
 import { organisationClassification } from './config';
 import { membership, tenant } from './identity';
 
@@ -99,5 +101,80 @@ export const organisationClassificationLink = pgTable(
       foreignColumns: [organisationClassification.tenantId, organisationClassification.id],
     }),
     index('organisation_classification_link_classification_idx').on(t.tenantId, t.classificationId),
+  ],
+);
+
+/** Marketing consent (GDPR). UNKNOWN until the person states a preference. */
+export const contactConsentStatus = pgEnum('contact_consent_status', ['UNKNOWN', 'OPTED_IN', 'OPTED_OUT']);
+
+/**
+ * A person at an organisation. Archived (soft delete) or, for GDPR erasure, anonymised in place:
+ * personal columns are wiped and `anonymised_at` set, the row stays for referential integrity
+ * (05-domain-model.md §4).
+ */
+export const contact = pgTable(
+  'contact',
+  {
+    id: primaryId(),
+    tenantId: tenantIdColumn().references(() => tenant.id),
+    organisationId: uuid('organisation_id').notNull(),
+    firstName: text('first_name').notNull(),
+    lastName: text('last_name'),
+    /** Accent-insensitive name for search (see immutable_unaccent in migration 0007). */
+    nameKey: text('name_key')
+      .notNull()
+      .generatedAlwaysAs(sql`lower(immutable_unaccent(btrim(first_name || ' ' || coalesce(last_name, ''))))`),
+    position: text('position'),
+    phone: text('phone'),
+    email: citext('email'),
+    linkedin: text('linkedin'),
+    isDecisionMaker: boolean('is_decision_maker').notNull().default(false),
+    /** At most one live primary contact per organisation. */
+    isPrimary: boolean('is_primary').notNull().default(false),
+    consentStatus: contactConsentStatus('consent_status').notNull().default('UNKNOWN'),
+    /** Where the preference was given ("event form", "email reply"…); required once stated. */
+    consentSource: text('consent_source'),
+    consentAt: timestamp('consent_at', { withTimezone: true }),
+    unsubscribedAt: timestamp('unsubscribed_at', { withTimezone: true }),
+    /** Derived, so it can never disagree with the consent columns. */
+    newsletterEligible: boolean('newsletter_eligible')
+      .notNull()
+      .generatedAlwaysAs(
+        sql`consent_status = 'OPTED_IN' AND unsubscribed_at IS NULL AND archived_at IS NULL AND anonymised_at IS NULL`,
+      ),
+    tags: text('tags')
+      .array()
+      .notNull()
+      .default(sql`'{}'::text[]`),
+    createdByMembershipId: uuid('created_by_membership_id'),
+    anonymisedAt: timestamp('anonymised_at', { withTimezone: true }),
+    archivedAt: archivedAt(),
+    ...timestamps(),
+    version: versionColumn(),
+  },
+  (t) => [
+    unique('contact_tenant_id_id_uq').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'contact_organisation_fk',
+      columns: [t.tenantId, t.organisationId],
+      foreignColumns: [organisation.tenantId, organisation.id],
+    }),
+    foreignKey({
+      name: 'contact_created_by_fk',
+      columns: [t.tenantId, t.createdByMembershipId],
+      foreignColumns: [membership.tenantId, membership.id],
+    }),
+    index('contact_organisation_idx').on(t.tenantId, t.organisationId),
+    uniqueIndex('contact_one_primary_per_organisation_uq')
+      .on(t.tenantId, t.organisationId)
+      .where(sql`${t.isPrimary} AND ${t.archivedAt} IS NULL`),
+    uniqueIndex('contact_organisation_email_uq')
+      .on(t.tenantId, t.organisationId, t.email)
+      .where(sql`${t.email} IS NOT NULL AND ${t.archivedAt} IS NULL`),
+    check('contact_first_name_ck', sql`length(btrim(${t.firstName})) > 0`),
+    check(
+      'contact_consent_stated_ck',
+      sql`${t.consentStatus} = 'UNKNOWN' OR (${t.consentAt} IS NOT NULL AND ${t.consentSource} IS NOT NULL)`,
+    ),
   ],
 );

@@ -167,3 +167,103 @@ export interface DuplicateMatch {
   reason: 'VAT' | 'NAME';
   similarity: number;
 }
+
+// ── contacts ─────────────────────────────────────────────────────────────────
+
+export const CONTACT_CONSENT_STATUSES = ['UNKNOWN', 'OPTED_IN', 'OPTED_OUT'] as const;
+export type ContactConsentStatus = (typeof CONTACT_CONSENT_STATUSES)[number];
+
+const contactFields = {
+  firstName: z.string().trim().min(1).max(100),
+  lastName: optionalText(100),
+  position: optionalText(150),
+  phone: optionalText(50),
+  email: z
+    .string()
+    .trim()
+    .transform((v) => v || null)
+    .pipe(z.email().max(254).nullable())
+    .nullable(),
+  linkedin: optionalText(300),
+  isDecisionMaker: z.boolean(),
+  isPrimary: z.boolean(),
+  tags: z
+    .array(z.string().trim().min(1).max(40))
+    .max(20)
+    .transform((tags) => [...new Set(tags)]),
+};
+
+/**
+ * Stating a marketing preference (GDPR): where it was given is mandatory once known, the time
+ * defaults to now.
+ */
+const consentFields = {
+  consentStatus: z.enum(CONTACT_CONSENT_STATUSES),
+  consentSource: z.string().trim().min(2).max(200).nullable(),
+  consentAt: z.iso.datetime({ offset: true }).nullable(),
+};
+
+const requireConsentSource = <T extends { consentStatus?: string; consentSource?: string | null }>(body: T) =>
+  !body.consentStatus || body.consentStatus === 'UNKNOWN' || Boolean(body.consentSource);
+
+export const createContactRequestSchema = z
+  .object({
+    organisationId: z.uuid(),
+    firstName: contactFields.firstName,
+    lastName: contactFields.lastName.optional(),
+    position: contactFields.position.optional(),
+    phone: contactFields.phone.optional(),
+    email: contactFields.email.optional(),
+    linkedin: contactFields.linkedin.optional(),
+    isDecisionMaker: contactFields.isDecisionMaker.default(false),
+    isPrimary: contactFields.isPrimary.default(false),
+    tags: contactFields.tags.default([]),
+    consentStatus: consentFields.consentStatus.default('UNKNOWN'),
+    consentSource: consentFields.consentSource.optional(),
+    consentAt: consentFields.consentAt.optional(),
+  })
+  .refine(requireConsentSource, { path: ['consentSource'], message: 'Say where the consent was given' });
+export type CreateContactRequest = z.infer<typeof createContactRequestSchema>;
+
+/** PATCH /contacts/{id} (If-Match required). The organisation of a contact doesn't change. */
+export const updateContactRequestSchema = z
+  .object({ ...contactFields, ...consentFields })
+  .partial()
+  .refine((body) => Object.values(body).some((v) => v !== undefined), 'Nothing to change')
+  .refine(requireConsentSource, { path: ['consentSource'], message: 'Say where the consent was given' });
+export type UpdateContactRequest = z.infer<typeof updateContactRequestSchema>;
+
+export const contactListQuerySchema = pageQuerySchema.extend({
+  organisationId: z.uuid().optional(),
+  /** Name (accent-insensitive) or email. */
+  q: z.string().trim().max(100).optional(),
+  includeArchived: z.stringbool().default(false),
+});
+export type ContactListQuery = z.infer<typeof contactListQuerySchema>;
+
+export interface ContactListItem {
+  id: string;
+  organisation: { id: string; displayName: string };
+  firstName: string;
+  lastName: string | null;
+  position: string | null;
+  email: string | null;
+  phone: string | null;
+  isPrimary: boolean;
+  isDecisionMaker: boolean;
+  consentStatus: ContactConsentStatus;
+  newsletterEligible: boolean;
+  tags: string[];
+  archivedAt: string | null;
+  anonymisedAt: string | null;
+  version: number;
+}
+
+export interface ContactDetail extends ContactListItem {
+  linkedin: string | null;
+  consentSource: string | null;
+  consentAt: string | null;
+  unsubscribedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}

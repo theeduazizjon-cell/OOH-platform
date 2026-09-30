@@ -71,6 +71,20 @@
       "when": 1790652626291,
       "tag": "0009_crm_rls_and_search",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1790660306510,
+      "tag": "0010_contacts",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1790660314960,
+      "tag": "0011_contact_rls_and_search",
+      "breakpoints": true
     }
   ]
 }
