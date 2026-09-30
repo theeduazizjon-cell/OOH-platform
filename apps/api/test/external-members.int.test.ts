@@ -122,7 +122,7 @@ afterAll(async () => {
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
-const bearer = (who: UserName | string) => ({
+const bearer = (who: string) => ({
   authorization: `Bearer ${who in tokens ? tokens[who as UserName] : who}`,
 });
 const code = (response: LightMyRequestResponse) => response.json<{ code: string }>().code;
