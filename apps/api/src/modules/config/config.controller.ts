@@ -10,9 +10,11 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import {
+  type ActivityTypeItem,
   type ClassificationItem,
   createClassificationRequestSchema,
   type Page,
+  type PipelineItem,
   updateClassificationRequestSchema,
 } from '@ooh/contracts';
 import type { FastifyRequest } from 'fastify';
@@ -21,12 +23,29 @@ import { clientInfo } from '../../core/http/client-info';
 import { type IfMatch, IfMatchHeader, VersionEtagInterceptor } from '../../core/http/concurrency';
 import { parseWith } from '../../core/http/validation';
 import { ClassificationsService } from './classifications.service';
+import { SalesConfigService } from './sales-config.service';
 
 /** Nomenclatures (docs/architecture/10-api.md: GET/POST/PATCH /config/{…}). */
 @Controller('config')
 @UseInterceptors(VersionEtagInterceptor)
 export class ConfigController {
-  constructor(private readonly classifications: ClassificationsService) {}
+  constructor(
+    private readonly classifications: ClassificationsService,
+    private readonly sales: SalesConfigService,
+  ) {}
+
+  /** Pipelines with their stages (ordered), for the board and opportunity forms. */
+  @Get('pipelines')
+  @RequirePermission('config.read')
+  listPipelines(@CurrentPrincipal() principal: Principal): Promise<PipelineItem[]> {
+    return this.sales.pipelines(principal);
+  }
+
+  @Get('activity-types')
+  @RequirePermission('config.read')
+  listActivityTypes(@CurrentPrincipal() principal: Principal): Promise<ActivityTypeItem[]> {
+    return this.sales.activityTypes(principal);
+  }
 
   @Get('classifications')
   @RequirePermission('config.read')
