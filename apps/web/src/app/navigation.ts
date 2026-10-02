@@ -28,7 +28,7 @@ export interface NavItem {
 /** Flattened navigation from docs/architecture/09-screen-map.md. */
 export const NAV_ITEMS: readonly NavItem[] = [
   { label: 'Dashboard', path: '/app', icon: LayoutDashboard, permission: 'dashboard.read' },
-  { label: 'Requests', path: '/app/requests', icon: Inbox, permission: 'brief.read', milestone: 'M3' },
+  { label: 'Requests', path: '/app/requests', icon: Inbox, permission: 'brief.read' },
   {
     label: 'Campaigns',
     path: '/app/campaigns',
