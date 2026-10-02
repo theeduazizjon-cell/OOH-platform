@@ -13,6 +13,7 @@ import { CrmModule } from './modules/crm/crm.module';
 import { HealthModule } from './modules/health/health.module';
 import { MembershipsModule } from './modules/memberships/memberships.module';
 import { RolesModule } from './modules/roles/roles.module';
+import { TasksModule } from './modules/tasks/tasks.module';
 
 @Module({})
 export class AppModule {
@@ -46,6 +47,7 @@ export class AppModule {
         RolesModule,
         TenantConfigModule,
         CrmModule,
+        TasksModule,
       ],
     };
   }

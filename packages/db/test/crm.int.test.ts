@@ -18,6 +18,7 @@ import {
   opportunity,
   pipeline,
   pipelineStage,
+  task,
 } from '../src/schema';
 import { withTenantTx } from '../src/tenant-context';
 import { appConnection, expectPgError, ownerConnection, SQLSTATE } from './helpers';
@@ -414,6 +415,52 @@ describe('sales pipeline', () => {
         }),
       ),
       SQLSTATE.FOREIGN_KEY_VIOLATION,
+    );
+  });
+});
+
+describe('task', () => {
+  const insert = (tenantId: string, values: Partial<typeof task.$inferInsert>) =>
+    inTenant(tenantId, (tx) =>
+      tx
+        .insert(task)
+        .values({ tenantId, title: 'Call back', ...values })
+        .returning(),
+    ).then((rows) => rows[0]!);
+
+  it('enforces subject, completion and dedupe rules', async () => {
+    const org = await createOrg(tenantA, { displayName: `Task Co ${suffix}` });
+    const plain = await insert(tenantA, {});
+    expect(plain).toMatchObject({ status: 'OPEN', priority: 'NORMAL', source: 'USER' });
+    // A subject needs its type, id and company.
+    await expectPgError(insert(tenantA, { subjectType: 'organisation' }), '23514');
+    await expectPgError(insert(tenantA, { subjectType: 'opportunity', subjectId: org.id }), '23514');
+    await expectPgError(
+      insert(tenantA, { subjectType: 'campaign', subjectId: org.id, organisationId: org.id }),
+      '23514',
+    );
+    // DONE exactly when completed_at is set.
+    await expectPgError(insert(tenantA, { status: 'DONE' }), '23514');
+    await expectPgError(insert(tenantA, { completedAt: new Date() }), '23514');
+    await expectPgError(insert(tenantA, { title: '  ' }), '23514');
+
+    const key = `opportunity.won:${org.id}`;
+    await insert(tenantA, { dedupeKey: key, source: 'SYSTEM' });
+    await expectPgError(insert(tenantA, { dedupeKey: key }), UNIQUE_VIOLATION);
+    // The same key is free in another tenant.
+    await insert(tenantB, { dedupeKey: key });
+  });
+
+  it("never points at another tenant's company", async () => {
+    const orgB = await createOrg(tenantB, { displayName: `Task B ${suffix}` });
+    await expectPgError(insert(tenantA, { organisationId: orgB.id }), SQLSTATE.FOREIGN_KEY_VIOLATION);
+  });
+
+  it('cannot be deleted by the application', async () => {
+    const row = await insert(tenantA, {});
+    await expectPgError(
+      inTenant(tenantA, (tx) => tx.delete(task).where(eq(task.id, row.id))),
+      SQLSTATE.INSUFFICIENT_PRIVILEGE,
     );
   });
 });

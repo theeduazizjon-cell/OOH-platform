@@ -7,3 +7,4 @@ export * from './pagination';
 export * from './permissions';
 export * from './role-management';
 export * from './roles';
+export * from './tasks';
