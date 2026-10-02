@@ -290,6 +290,32 @@ export class TasksService {
     return created.id;
   }
 
+  /**
+   * Completes the platform task with this dedupe key when it is still open (e.g. "Create brief" once
+   * the brief exists). Returns whether a task was completed.
+   */
+  async completeSystemTask(
+    tx: Transaction,
+    principal: Principal,
+    client: ClientInfo,
+    dedupeKey: string,
+  ): Promise<boolean> {
+    const [done] = await tx
+      .update(task)
+      .set({ status: 'DONE', completedAt: new Date(), version: sql`${task.version} + 1` })
+      .where(and(eq(task.dedupeKey, dedupeKey), inArray(task.status, OPEN_STATUSES)))
+      .returning({ id: task.id, status: task.status });
+    if (!done) return false;
+    await this.audit.record(tx, {
+      ...actor(principal, client),
+      action: 'task.completed',
+      subjectType: 'task',
+      subjectId: done.id,
+      metadata: { automatic: true, dedupeKey },
+    });
+    return true;
+  }
+
   // ── internals ──────────────────────────────────────────────────────────────
 
   private inTenant<T>(principal: Principal, fn: (tx: Transaction) => Promise<T>): Promise<T> {

@@ -127,6 +127,20 @@
       "when": 1790960940229,
       "tag": "0017_tasks_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1790962838861,
+      "tag": "0018_briefs",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790962840164,
+      "tag": "0019_briefs_rls",
+      "breakpoints": true
     }
   ]
 }

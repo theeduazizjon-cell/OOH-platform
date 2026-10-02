@@ -7,7 +7,9 @@ import { AuthCoreModule } from './core/auth/auth-core.module';
 import { DatabaseModule } from './core/database/database.module';
 import { REQUEST_ID_HEADER } from './core/http/request-id';
 import { RedisModule } from './core/redis/redis.module';
+import { StateModule } from './core/state/state.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { BriefsModule } from './modules/briefs/briefs.module';
 import { TenantConfigModule } from './modules/config/config.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { HealthModule } from './modules/health/health.module';
@@ -40,6 +42,7 @@ export class AppModule {
         DatabaseModule,
         RedisModule,
         AuditModule,
+        StateModule,
         AuthCoreModule,
         HealthModule,
         AuthModule,
@@ -48,6 +51,7 @@ export class AppModule {
         TenantConfigModule,
         CrmModule,
         TasksModule,
+        BriefsModule,
       ],
     };
   }
