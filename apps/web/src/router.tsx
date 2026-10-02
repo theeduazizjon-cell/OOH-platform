@@ -12,6 +12,7 @@ import { RequirePermission } from '@/app/require-permission';
 import type { AuthContextValue } from '@/lib/auth';
 import { AcceptInvitationPage } from '@/pages/accept-invitation-page';
 import { CompaniesPage } from '@/pages/companies-page';
+import { CompanyPage } from '@/pages/company-page';
 import { ContactsPage } from '@/pages/contacts-page';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { LoginPage, safeRedirect } from '@/pages/login-page';
@@ -19,6 +20,7 @@ import { NomenclaturesPage } from '@/pages/nomenclatures-page';
 import { PipelinePage } from '@/pages/pipeline-page';
 import { PlaceholderPage } from '@/pages/placeholder-page';
 import { RolesPage } from '@/pages/roles-page';
+import { TasksPage } from '@/pages/tasks-page';
 import { UsersPage } from '@/pages/users-page';
 
 export interface RouterContext {
@@ -122,6 +124,29 @@ const companiesRoute = createRoute({
   ),
 });
 
+const companyRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'crm/companies/$companyId',
+  component: function CompanyRoute() {
+    const { companyId } = companyRoute.useParams();
+    return (
+      <RequirePermission permission="organisation.read">
+        <CompanyPage key={companyId} companyId={companyId} />
+      </RequirePermission>
+    );
+  },
+});
+
+const tasksRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'tasks',
+  component: () => (
+    <RequirePermission permission="task.read">
+      <TasksPage />
+    </RequirePermission>
+  ),
+});
+
 const contactsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: 'crm/contacts',
@@ -165,8 +190,10 @@ const routeTree = rootRoute.addChildren([
     rolesRoute,
     nomenclaturesRoute,
     companiesRoute,
+    companyRoute,
     contactsRoute,
     pipelineRoute,
+    tasksRoute,
     ...placeholderRoutes,
   ]),
 ]);

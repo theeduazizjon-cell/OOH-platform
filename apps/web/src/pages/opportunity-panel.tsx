@@ -16,6 +16,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { hasPermission, useMe } from '@/lib/me';
 import { ActivityTimeline } from './activity-timeline';
+import { TaskList } from './task-list';
 import { CompanyPicker, type PickedCompany } from './company-picker';
 import { OpportunityForm, parseAmount } from './opportunity-form';
 import { formatMoney, missingToWin, openStages } from './pipeline';
@@ -74,6 +75,8 @@ export function OpportunityPanel({ target, onClose }: { target: OpportunityTarge
     await queryClient.invalidateQueries({ queryKey: ['opportunities'] });
     await queryClient.invalidateQueries({ queryKey: ['opportunity'] });
     await queryClient.invalidateQueries({ queryKey: ['activities'] });
+    // A win creates the "Create brief" task.
+    await queryClient.invalidateQueries({ queryKey: ['tasks'] });
   };
 
   /** Changes send If-Match; on 412 the opportunity reloads and the error explains why. */
@@ -227,6 +230,14 @@ export function OpportunityPanel({ target, onClose }: { target: OpportunityTarge
             }}
             onCancel={onClose}
           />
+          <section className="mt-6 border-t border-slate-200 pt-4">
+            <TaskList
+              title="Tasks"
+              filter={{ opportunityId: opportunity.id }}
+              showSubject={false}
+              emptyText="No open tasks."
+            />
+          </section>
           <ActivityTimeline organisationId={opportunity.organisation.id} opportunityId={opportunity.id} />
         </>
       )}
