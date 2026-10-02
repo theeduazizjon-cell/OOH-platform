@@ -31,6 +31,18 @@
 | OPEN      | lose       | LOST       | S              | lost_reason                 | —                                             |
 | WON/LOST  | reopen     | OPEN       | Mgmt           | reason                      | audit                                         |
 
+## 2b. Task (core, M2d)
+
+| From             | Action   | To          | Actor                     | Preconditions | Side effects                            |
+| ---------------- | -------- | ----------- | ------------------------- | ------------- | --------------------------------------- |
+| —                | create   | OPEN        | internal users / SYS      | —             | audit; SYS tasks dedupe on `dedupe_key` |
+| OPEN             | start    | IN_PROGRESS | assignee (ASSIGNED) / ALL | —             | audit                                   |
+| OPEN/IN_PROGRESS | complete | DONE        | assignee / ALL            | —             | `completed_at` set (DB check)           |
+| OPEN/IN_PROGRESS | cancel   | CANCELLED   | assignee / ALL            | —             | audit                                   |
+| DONE/CANCELLED   | reopen   | OPEN        | assignee / ALL            | —             | `completed_at` cleared                  |
+
+Closed tasks are read-only until reopened. Members with the ASSIGNED scope can't reassign their tasks.
+
 ## 3. Brief
 
 | From            | Action            | To        | Actor       | Preconditions         | Side effects                           |

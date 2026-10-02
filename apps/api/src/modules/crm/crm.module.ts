@@ -6,10 +6,12 @@ import { ActivitiesController, OpportunitiesController } from './opportunities.c
 import { OpportunitiesService } from './opportunities.service';
 import { OrganisationsController } from './organisations.controller';
 import { OrganisationsService } from './organisations.service';
+import { TasksModule } from '../tasks/tasks.module';
 import { RelationshipsService } from './relationships.service';
 
 /** CRM (M2): organisations, contacts, relationships, opportunities and activities. */
 @Module({
+  imports: [TasksModule],
   controllers: [OrganisationsController, ContactsController, OpportunitiesController, ActivitiesController],
   providers: [
     OrganisationsService,

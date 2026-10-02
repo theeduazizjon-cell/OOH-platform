@@ -20,7 +20,8 @@ Follows the roadmap's sequence [R§51] with **three justified adjustments**:
 | M2c.1 Pipelines/stages + activity types (defaults), opportunities (move/win/lose/reopen, enforced in the DB), activities timeline: API | ✅ done 2026-09-30 (branch `feat/m2-opportunities`)      |
 | M2c.2 Pipeline board, opportunity panel (move/win/lose/reopen), company opportunities + timeline: web                                  | ✅ done 2026-09-30 (branch `feat/m2-pipeline-ui`)        |
 | M2c.3 Nomenclature admin: config write API + UI for pipeline stages, activity types and classifications                                | ✅ done 2026-10-02 (branch `feat/m2-nomenclature-admin`) |
-| M2d Company 360° v1, tasks core                                                                                                        | next                                                     |
+| M2d.1 Tasks core: task table (polymorphic subject + company FK), status machine, ASSIGNED scope, won → "Create brief" task: API        | ✅ done 2026-10-03 (branch `feat/m2-tasks`)              |
+| M2d.2 Tasks page, Company 360° v1 page: web                                                                                            | next                                                     |
 
 Sizing assumes 1–2 developers; each milestone ends with a demo on the Carrefour Sinaia scenario and passing tests.
 
