@@ -12,6 +12,8 @@ import { RequirePermission } from '@/app/require-permission';
 import type { AuthContextValue } from '@/lib/auth';
 import { AcceptInvitationPage } from '@/pages/accept-invitation-page';
 import { BriefPage } from '@/pages/brief-page';
+import { CampaignPage } from '@/pages/campaign-page';
+import { CampaignsPage } from '@/pages/campaigns-page';
 import { CompaniesPage } from '@/pages/companies-page';
 import { CompanyPage } from '@/pages/company-page';
 import { ContactsPage } from '@/pages/contacts-page';
@@ -162,6 +164,29 @@ const briefRoute = createRoute({
   },
 });
 
+const campaignsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'campaigns',
+  component: () => (
+    <RequirePermission permission="campaign.read">
+      <CampaignsPage />
+    </RequirePermission>
+  ),
+});
+
+const campaignRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'campaigns/$campaignId',
+  component: function CampaignRoute() {
+    const { campaignId } = campaignRoute.useParams();
+    return (
+      <RequirePermission permission="campaign.read">
+        <CampaignPage key={campaignId} campaignId={campaignId} />
+      </RequirePermission>
+    );
+  },
+});
+
 const tasksRoute = createRoute({
   getParentRoute: () => appRoute,
   path: 'tasks',
@@ -221,6 +246,8 @@ const routeTree = rootRoute.addChildren([
     tasksRoute,
     requestsRoute,
     briefRoute,
+    campaignsRoute,
+    campaignRoute,
     ...placeholderRoutes,
   ]),
 ]);
