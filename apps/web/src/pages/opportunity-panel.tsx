@@ -8,6 +8,7 @@ import {
   type ProblemDetails,
 } from '@ooh/contracts';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from '@tanstack/react-router';
 import { type FormEvent, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Alert, Card } from '@/components/ui/card';
@@ -51,7 +52,26 @@ export function OpportunityPanel({ target, onClose }: { target: OpportunityTarge
     update: hasPermission(me, 'opportunity.update'),
     close: hasPermission(me, 'opportunity.close'),
     reopen: hasPermission(me, 'opportunity.reopen'),
+    brief: hasPermission(me, 'brief.create'),
   };
+  const navigate = useNavigate();
+
+  /** A won deal becomes a draft brief (once); if it already has one, open that instead. */
+  async function openBrief(o: OpportunityDetail) {
+    setError(null);
+    try {
+      const created = await api.request<{ id: string }>(`/opportunities/${o.id}/brief`, { method: 'POST' });
+      await queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      await navigate({ to: '/app/requests/$briefId', params: { briefId: created.id } });
+    } catch (caught) {
+      const existing = caught instanceof ApiError ? caught.problem?.meta?.briefId : undefined;
+      if (typeof existing === 'string') {
+        await navigate({ to: '/app/requests/$briefId', params: { briefId: existing } });
+        return;
+      }
+      setError(caught instanceof ApiError ? caught.message : 'Could not reach the server. Try again.');
+    }
+  }
 
   const opened = useQuery({
     queryKey: ['opportunity', target.kind === 'open' ? target.id : null],
@@ -195,6 +215,11 @@ export function OpportunityPanel({ target, onClose }: { target: OpportunityTarge
                     Lost
                   </Button>
                 </>
+              )}
+              {opportunity.stage.kind === 'WON' && can.brief && (
+                <Button className="h-8 px-2" onClick={() => void openBrief(opportunity)}>
+                  Create brief
+                </Button>
               )}
               {!isOpen && can.reopen && (
                 <Button variant="secondary" className="h-8 px-2" onClick={() => setStep({ kind: 'reopen' })}>

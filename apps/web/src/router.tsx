@@ -11,6 +11,7 @@ import { NAV_ITEMS } from '@/app/navigation';
 import { RequirePermission } from '@/app/require-permission';
 import type { AuthContextValue } from '@/lib/auth';
 import { AcceptInvitationPage } from '@/pages/accept-invitation-page';
+import { BriefPage } from '@/pages/brief-page';
 import { CompaniesPage } from '@/pages/companies-page';
 import { CompanyPage } from '@/pages/company-page';
 import { ContactsPage } from '@/pages/contacts-page';
@@ -19,6 +20,7 @@ import { LoginPage, safeRedirect } from '@/pages/login-page';
 import { NomenclaturesPage } from '@/pages/nomenclatures-page';
 import { PipelinePage } from '@/pages/pipeline-page';
 import { PlaceholderPage } from '@/pages/placeholder-page';
+import { RequestsPage } from '@/pages/requests-page';
 import { RolesPage } from '@/pages/roles-page';
 import { TasksPage } from '@/pages/tasks-page';
 import { UsersPage } from '@/pages/users-page';
@@ -137,6 +139,29 @@ const companyRoute = createRoute({
   },
 });
 
+const requestsRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'requests',
+  component: () => (
+    <RequirePermission permission="brief.read">
+      <RequestsPage />
+    </RequirePermission>
+  ),
+});
+
+const briefRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'requests/$briefId',
+  component: function BriefRoute() {
+    const { briefId } = briefRoute.useParams();
+    return (
+      <RequirePermission permission="brief.read">
+        <BriefPage key={briefId} briefId={briefId} />
+      </RequirePermission>
+    );
+  },
+});
+
 const tasksRoute = createRoute({
   getParentRoute: () => appRoute,
   path: 'tasks',
@@ -194,6 +219,8 @@ const routeTree = rootRoute.addChildren([
     contactsRoute,
     pipelineRoute,
     tasksRoute,
+    requestsRoute,
+    briefRoute,
     ...placeholderRoutes,
   ]),
 ]);
