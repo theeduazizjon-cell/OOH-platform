@@ -15,6 +15,7 @@ import { CompaniesPage } from '@/pages/companies-page';
 import { ContactsPage } from '@/pages/contacts-page';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { LoginPage, safeRedirect } from '@/pages/login-page';
+import { PipelinePage } from '@/pages/pipeline-page';
 import { PlaceholderPage } from '@/pages/placeholder-page';
 import { RolesPage } from '@/pages/roles-page';
 import { UsersPage } from '@/pages/users-page';
@@ -120,6 +121,16 @@ const contactsRoute = createRoute({
   ),
 });
 
+const pipelineRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'crm/pipeline',
+  component: () => (
+    <RequirePermission permission="opportunity.read">
+      <PipelinePage />
+    </RequirePermission>
+  ),
+});
+
 /** Modules not built yet get a placeholder that names the delivering milestone. */
 const placeholderRoutes = NAV_ITEMS.filter((item) => item.milestone).map((item) =>
   createRoute({
@@ -143,6 +154,7 @@ const routeTree = rootRoute.addChildren([
     rolesRoute,
     companiesRoute,
     contactsRoute,
+    pipelineRoute,
     ...placeholderRoutes,
   ]),
 ]);

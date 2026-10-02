@@ -1,7 +1,7 @@
 import { Link } from '@tanstack/react-router';
 import { hasPermission, useMe } from '@/lib/me';
 
-/** CRM sub-navigation (docs/architecture/09-screen-map.md: Companies, Contacts). */
+/** CRM sub-navigation (docs/architecture/09-screen-map.md: Companies, Contacts, Pipeline). */
 export function CrmTabs() {
   const { data: me } = useMe();
   const tabs = [
@@ -11,6 +11,11 @@ export function CrmTabs() {
       visible: hasPermission(me, 'organisation.read'),
     },
     { to: '/app/crm/contacts' as const, label: 'Contacts', visible: hasPermission(me, 'contact.read') },
+    {
+      to: '/app/crm/pipeline' as const,
+      label: 'Pipeline',
+      visible: hasPermission(me, 'opportunity.read') && hasPermission(me, 'config.read'),
+    },
   ].filter((tab) => tab.visible);
   if (tabs.length < 2) return null;
   return (

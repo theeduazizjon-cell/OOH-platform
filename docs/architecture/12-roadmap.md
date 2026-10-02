@@ -18,7 +18,8 @@ Follows the roadmap's sequence [R§51] with **three justified adjustments**:
 | M2b.1 Contacts (+consent, GDPR anonymisation), Contacts screens                                                                        | ✅ done 2026-09-29 (branch `feat/m2-contacts`)      |
 | M2b.2 Agency ↔ client relationships, external invitations, account owner picker                                                        | ✅ done 2026-09-30 (branch `feat/m2-relationships`) |
 | M2c.1 Pipelines/stages + activity types (defaults), opportunities (move/win/lose/reopen, enforced in the DB), activities timeline: API | ✅ done 2026-09-30 (branch `feat/m2-opportunities`) |
-| M2c.2 Pipeline board, opportunity panel, company opportunities + timeline, nomenclature admin                                          | next                                                |
+| M2c.2 Pipeline board, opportunity panel (move/win/lose/reopen), company opportunities + timeline: web                                  | ✅ done 2026-09-30 (branch `feat/m2-pipeline-ui`)   |
+| M2c.3 Nomenclature admin: config write API + UI for pipeline stages and activity types                                                 | next                                                |
 | M2d Company 360° v1, tasks core                                                                                                        | planned                                             |
 
 Sizing assumes 1–2 developers; each milestone ends with a demo on the Carrefour Sinaia scenario and passing tests.

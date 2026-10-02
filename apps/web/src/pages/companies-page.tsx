@@ -15,8 +15,10 @@ import { Input } from '@/components/ui/input';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { hasPermission, useMe } from '@/lib/me';
+import { ActivityTimeline } from './activity-timeline';
 import { CompanyContacts } from './company-contacts';
 import { CompanyForm, type CompanyFormValues } from './company-form';
+import { CompanyOpportunities } from './company-opportunities';
 import { CompanyRelationships } from './company-relationships';
 import { CrmTabs } from './crm-tabs';
 
@@ -186,6 +188,8 @@ export function CompaniesPage() {
               )}
               <CompanyContacts organisationId={company.id} archived={Boolean(company.archivedAt)} />
               <CompanyRelationships organisationId={company.id} archived={Boolean(company.archivedAt)} />
+              <CompanyOpportunities organisation={company} archived={Boolean(company.archivedAt)} />
+              <ActivityTimeline organisationId={company.id} archived={Boolean(company.archivedAt)} />
             </>
           )}
         </Card>
