@@ -20,6 +20,8 @@ import {
   pipelineStage,
   brief,
   briefLine,
+  campaign,
+  campaignLocation,
   statusHistory,
   task,
 } from '../src/schema';
@@ -553,6 +555,99 @@ describe('brief', () => {
     await expectPgError(
       inTenant(tenantA, (tx) => tx.delete(statusHistory).where(eq(statusHistory.id, row!.id))),
       SQLSTATE.INSUFFICIENT_PRIVILEGE,
+    );
+  });
+});
+
+describe('campaign and location', () => {
+  const member = async () => {
+    const [m] = await owner.db
+      .select({ id: membership.id })
+      .from(membership)
+      .where(eq(membership.tenantId, tenantA))
+      .limit(1);
+    return m!.id;
+  };
+  const newCampaign = async (values: Partial<typeof campaign.$inferInsert> = {}) => {
+    const client = await createOrg(tenantA, { displayName: `Campaign client ${Math.random()}` });
+    const ownerMembershipId = await member();
+    return inTenant(tenantA, (tx) =>
+      tx
+        .insert(campaign)
+        .values({
+          tenantId: tenantA,
+          code: `T-${Math.random().toString(36).slice(2, 10)}`,
+          name: 'Openings',
+          clientOrganisationId: client.id,
+          ownerMembershipId,
+          ...values,
+        })
+        .returning(),
+    ).then((rows) => rows[0]!);
+  };
+
+  it('enforces campaign rules', async () => {
+    const c = await newCampaign();
+    expect(c.status).toBe('ACTIVE');
+    await expectPgError(newCampaign({ code: c.code }), UNIQUE_VIOLATION);
+    await expectPgError(newCampaign({ status: 'CANCELLED' }), '23514');
+    await expectPgError(
+      newCampaign({
+        agencyOrganisationId: c.clientOrganisationId,
+        clientOrganisationId: c.clientOrganisationId,
+      }),
+      '23514',
+    );
+  });
+
+  it('enforces the location hold and cancel rules', async () => {
+    const c = await newCampaign();
+    const add = (values: Partial<typeof campaignLocation.$inferInsert>) =>
+      inTenant(tenantA, (tx) =>
+        tx
+          .insert(campaignLocation)
+          .values({ tenantId: tenantA, campaignId: c.id, name: 'Sinaia', ...values })
+          .returning(),
+      ).then((rows) => rows[0]!);
+    expect((await add({})).status).toBe('DRAFT');
+    await expectPgError(add({ status: 'ON_HOLD' }), '23514'); // must remember where to resume
+    await expectPgError(add({ previousStatus: 'DRAFT' }), '23514'); // only while on hold
+    await expectPgError(add({ status: 'ON_HOLD', previousStatus: 'CANCELLED' }), '23514');
+    await add({ status: 'ON_HOLD', previousStatus: 'RESEARCH', holdReason: 'Client paused' });
+    await expectPgError(add({ status: 'CANCELLED' }), '23514'); // needs a reason
+    await expectPgError(add({ researchRadiusM: 10 }), '23514');
+    await expectPgError(
+      inTenant(tenantA, (tx) => tx.delete(campaign).where(eq(campaign.id, c.id))),
+      SQLSTATE.INSUFFICIENT_PRIVILEGE,
+    );
+  });
+
+  it('a converted brief points at its campaign', async () => {
+    const c = await newCampaign();
+    const ownerMembershipId = await member();
+    const insert = (values: Partial<typeof brief.$inferInsert>) =>
+      inTenant(tenantA, (tx) =>
+        tx
+          .insert(brief)
+          .values({ tenantId: tenantA, title: 'B', ownerMembershipId, ...values })
+          .returning(),
+      );
+    await expectPgError(insert({ status: 'CONVERTED', confirmedAt: new Date() }), '23514');
+    await insert({
+      status: 'CONVERTED',
+      confirmedAt: new Date(),
+      convertedCampaignId: c.id,
+      convertedAt: new Date(),
+    });
+    const otherTenantCampaign = await createOrg(tenantB, { displayName: `X ${suffix}` });
+    await expectPgError(
+      insert({
+        status: 'CONVERTED',
+        confirmedAt: new Date(),
+        convertedCampaignId: otherTenantCampaign.id,
+        convertedAt: new Date(),
+      }),
+      SQLSTATE.FOREIGN_KEY_VIOLATION,
     );
   });
 });

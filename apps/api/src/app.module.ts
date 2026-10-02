@@ -10,6 +10,7 @@ import { RedisModule } from './core/redis/redis.module';
 import { StateModule } from './core/state/state.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BriefsModule } from './modules/briefs/briefs.module';
+import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { TenantConfigModule } from './modules/config/config.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { HealthModule } from './modules/health/health.module';
@@ -52,6 +53,7 @@ export class AppModule {
         CrmModule,
         TasksModule,
         BriefsModule,
+        CampaignsModule,
       ],
     };
   }

@@ -58,6 +58,9 @@ export const brief = pgTable(
       .default(sql`'{}'::jsonb`),
     inboundEmailId: uuid('inbound_email_id'),
     aiRunId: uuid('ai_run_id'),
+    /** The campaign its stores went to (set by convert). */
+    convertedCampaignId: uuid('converted_campaign_id'),
+    convertedAt: timestamp('converted_at', { withTimezone: true }),
     createdByMembershipId: uuid('created_by_membership_id'),
     ...timestamps(),
     version: versionColumn(),
@@ -108,6 +111,16 @@ export const brief = pgTable(
       sql`${t.status} NOT IN ('CONFIRMED', 'CONVERTED') OR ${t.confirmedAt} IS NOT NULL`,
     ),
     check('brief_source_opportunity_ck', sql`${t.source} <> 'OPPORTUNITY' OR ${t.opportunityId} IS NOT NULL`),
+    // Declared below in this file: drizzle builds the constraint lazily.
+    foreignKey({
+      name: 'brief_converted_campaign_fk',
+      columns: [t.tenantId, t.convertedCampaignId],
+      foreignColumns: [campaign.tenantId, campaign.id],
+    }),
+    check(
+      'brief_converted_ck',
+      sql`(${t.status} = 'CONVERTED') = (${t.convertedCampaignId} IS NOT NULL AND ${t.convertedAt} IS NOT NULL)`,
+    ),
   ],
 );
 
@@ -143,6 +156,159 @@ export const briefLine = pgTable(
     check(
       'brief_line_dates_ck',
       sql`${t.startDate} IS NULL OR ${t.endDate} IS NULL OR ${t.endDate} >= ${t.startDate}`,
+    ),
+  ],
+);
+
+export const campaignStatus = pgEnum('campaign_status', ['ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED']);
+export const locationStatus = pgEnum('location_status', [
+  'DRAFT',
+  'RESEARCH',
+  'AWAITING_APPROVAL',
+  'APPROVED',
+  'IN_PRODUCTION',
+  'READY_FOR_INSTALLATION',
+  'INSTALLING',
+  'LIVE',
+  'REMOVAL_DUE',
+  'REMOVING',
+  'COMPLETED',
+  'CANCELLED',
+  'ON_HOLD',
+]);
+
+/** A campaign: an umbrella over its locations, whose dates and progress it derives. */
+export const campaign = pgTable(
+  'campaign',
+  {
+    id: primaryId(),
+    tenantId: tenantIdColumn().references(() => tenant.id),
+    /** Human reference, unique per tenant (`2026-0007`). */
+    code: text('code').notNull(),
+    name: text('name').notNull(),
+    clientOrganisationId: uuid('client_organisation_id').notNull(),
+    agencyOrganisationId: uuid('agency_organisation_id'),
+    opportunityId: uuid('opportunity_id'),
+    /** The buyer responsible; drives the OWN scope. */
+    ownerMembershipId: uuid('owner_membership_id').notNull(),
+    status: campaignStatus('status').notNull().default('ACTIVE'),
+    holdReason: text('hold_reason'),
+    cancelReason: text('cancel_reason'),
+    notes: text('notes'),
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    createdByMembershipId: uuid('created_by_membership_id'),
+    ...timestamps(),
+    version: versionColumn(),
+  },
+  (t) => [
+    unique('campaign_tenant_id_id_uq').on(t.tenantId, t.id),
+    unique('campaign_code_uq').on(t.tenantId, t.code),
+    foreignKey({
+      name: 'campaign_client_fk',
+      columns: [t.tenantId, t.clientOrganisationId],
+      foreignColumns: [organisation.tenantId, organisation.id],
+    }),
+    foreignKey({
+      name: 'campaign_agency_fk',
+      columns: [t.tenantId, t.agencyOrganisationId],
+      foreignColumns: [organisation.tenantId, organisation.id],
+    }),
+    foreignKey({
+      name: 'campaign_opportunity_fk',
+      columns: [t.tenantId, t.opportunityId],
+      foreignColumns: [opportunity.tenantId, opportunity.id],
+    }),
+    foreignKey({
+      name: 'campaign_owner_fk',
+      columns: [t.tenantId, t.ownerMembershipId],
+      foreignColumns: [membership.tenantId, membership.id],
+    }),
+    foreignKey({
+      name: 'campaign_created_by_fk',
+      columns: [t.tenantId, t.createdByMembershipId],
+      foreignColumns: [membership.tenantId, membership.id],
+    }),
+    index('campaign_client_idx').on(t.tenantId, t.clientOrganisationId),
+    index('campaign_agency_idx').on(t.tenantId, t.agencyOrganisationId),
+    index('campaign_status_idx').on(t.tenantId, t.status),
+    check('campaign_name_ck', sql`length(btrim(${t.name})) > 0`),
+    check(
+      'campaign_agency_not_client_ck',
+      sql`${t.agencyOrganisationId} IS DISTINCT FROM ${t.clientOrganisationId}`,
+    ),
+    check(
+      'campaign_cancelled_ck',
+      sql`(${t.status} = 'CANCELLED') = (length(btrim(coalesce(${t.cancelReason}, ''))) > 0)`,
+    ),
+  ],
+);
+
+/**
+ * A store of a campaign: where the operational state machine runs (06-state-machines.md §5). The
+ * store pin and geocoding columns arrive in M3c.
+ */
+export const campaignLocation = pgTable(
+  'campaign_location',
+  {
+    id: primaryId(),
+    tenantId: tenantIdColumn().references(() => tenant.id),
+    campaignId: uuid('campaign_id').notNull(),
+    briefLineId: uuid('brief_line_id'),
+    name: text('name').notNull(),
+    address: text('address'),
+    city: text('city'),
+    county: text('county'),
+    startDate: date('start_date', { mode: 'string' }),
+    endDate: date('end_date', { mode: 'string' }),
+    requestedUnits: integer('requested_units'),
+    buyerMembershipId: uuid('buyer_membership_id'),
+    status: locationStatus('status').notNull().default('DRAFT'),
+    previousStatus: locationStatus('previous_status'),
+    holdReason: text('hold_reason'),
+    cancelReason: text('cancel_reason'),
+    researchRadiusM: integer('research_radius_m'),
+    liveAt: timestamp('live_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    ...timestamps(),
+    version: versionColumn(),
+  },
+  (t) => [
+    unique('campaign_location_tenant_id_id_uq').on(t.tenantId, t.id),
+    foreignKey({
+      name: 'campaign_location_campaign_fk',
+      columns: [t.tenantId, t.campaignId],
+      foreignColumns: [campaign.tenantId, campaign.id],
+    }),
+    foreignKey({
+      name: 'campaign_location_brief_line_fk',
+      columns: [t.tenantId, t.briefLineId],
+      foreignColumns: [briefLine.tenantId, briefLine.id],
+    }),
+    foreignKey({
+      name: 'campaign_location_buyer_fk',
+      columns: [t.tenantId, t.buyerMembershipId],
+      foreignColumns: [membership.tenantId, membership.id],
+    }),
+    index('campaign_location_campaign_idx').on(t.tenantId, t.campaignId),
+    index('campaign_location_status_idx').on(t.tenantId, t.status),
+    check('campaign_location_name_ck', sql`length(btrim(${t.name})) > 0`),
+    check('campaign_location_units_ck', sql`${t.requestedUnits} IS NULL OR ${t.requestedUnits} > 0`),
+    check(
+      'campaign_location_radius_ck',
+      sql`${t.researchRadiusM} IS NULL OR ${t.researchRadiusM} BETWEEN 50 AND 50000`,
+    ),
+    check(
+      'campaign_location_dates_ck',
+      sql`${t.startDate} IS NULL OR ${t.endDate} IS NULL OR ${t.endDate} >= ${t.startDate}`,
+    ),
+    // ON_HOLD remembers where it resumes to (never another hold or a terminal status).
+    check(
+      'campaign_location_hold_ck',
+      sql`(${t.status} = 'ON_HOLD') = (${t.previousStatus} IS NOT NULL) AND (${t.previousStatus} IS NULL OR ${t.previousStatus} NOT IN ('ON_HOLD', 'COMPLETED', 'CANCELLED'))`,
+    ),
+    check(
+      'campaign_location_cancelled_ck',
+      sql`(${t.status} = 'CANCELLED') = (length(btrim(coalesce(${t.cancelReason}, ''))) > 0)`,
     ),
   ],
 );

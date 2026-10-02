@@ -1,5 +1,6 @@
 export * from './auth';
 export * from './briefs';
+export * from './campaigns';
 export * from './concurrency';
 export * from './crm';
 export * from './errors';
