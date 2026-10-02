@@ -35,6 +35,13 @@ export interface TaskItem {
   version: number;
 }
 
+/** GET /tasks/assignees: active members who can see tasks (staff and external teams such as decorators). */
+export interface TaskAssigneeCandidate {
+  membershipId: string;
+  displayName: string;
+  kind: 'INTERNAL' | 'EXTERNAL';
+}
+
 const title = z.string().trim().min(1).max(200);
 const notes = z.string().trim().max(5000);
 const dueAt = z.iso.datetime({ offset: true });

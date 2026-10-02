@@ -10,6 +10,7 @@ import {
   type OpportunityDetail,
   type OrganisationDetail,
   type Page,
+  type TaskAssigneeCandidate,
   type TaskItem,
 } from '@ooh/contracts';
 import {
@@ -33,7 +34,7 @@ const PASSWORD = 'correct horse battery staple';
 const suffix = Date.now().toString(36);
 const email = (name: string) => `${name}-${suffix}@example.com`;
 
-type UserName = 'admin' | 'sales1' | 'sales2' | 'decorator' | 'adminB';
+type UserName = 'admin' | 'sales1' | 'sales2' | 'decorator' | 'client' | 'adminB';
 const members = {} as Record<UserName, string>;
 const tokens = {} as Record<UserName, string>;
 
@@ -95,6 +96,8 @@ beforeAll(async () => {
   ).json();
   // An installation team member: external, sees only tasks assigned to them.
   await add(tenantA, 'decorator', 'decorator', { kind: 'EXTERNAL', organisationId: company.id });
+  // A client contact on the portal: a member, but tasks are not for them.
+  await add(tenantA, 'client', 'end_client', { kind: 'EXTERNAL', organisationId: company.id });
   await login('decorator');
 });
 
@@ -152,6 +155,21 @@ describe('tasks', () => {
       subject: { type: 'organisation', id: company.id, name: company.displayName },
       createdBy: { membershipId: members.sales1 },
     });
+  });
+
+  it('offers as assignees only active members who can see tasks', async () => {
+    const response = await send('sales1', 'GET', '/tasks/assignees');
+    expect(response.statusCode).toBe(200);
+    const ids = response.json<TaskAssigneeCandidate[]>().map((c) => c.membershipId);
+    expect(ids).toEqual(
+      expect.arrayContaining([members.admin, members.sales1, members.sales2, members.decorator]),
+    );
+    expect(ids).not.toContain(members.client);
+    expect(ids).not.toContain(members.adminB);
+    expect(code(await createTask('sales1', { title: 'X', assigneeMembershipId: members.client }))).toBe(
+      'VALIDATION_FAILED',
+    );
+    expect((await send('decorator', 'GET', '/tasks/assignees')).statusCode).toBe(403);
   });
 
   it('validates the subject and the assignee', async () => {

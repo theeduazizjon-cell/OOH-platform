@@ -16,6 +16,7 @@ import {
   type Page,
   TASK_ACTIONS,
   type TaskAction,
+  type TaskAssigneeCandidate,
   type TaskItem,
   taskListQuerySchema,
   updateTaskRequestSchema,
@@ -38,6 +39,13 @@ export class TasksController {
   @RequirePermission('task.read')
   list(@CurrentPrincipal() principal: Principal, @Query() query: unknown): Promise<Page<TaskItem>> {
     return this.tasks.list(principal, parseWith(taskListQuerySchema, query));
+  }
+
+  /** Declared before ':id'. */
+  @Get('assignees')
+  @RequirePermission('task.create')
+  assignees(@CurrentPrincipal() principal: Principal): Promise<TaskAssigneeCandidate[]> {
+    return this.tasks.assignees(principal);
   }
 
   @Get(':id')

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type {
   CreateTaskRequest,
+  TaskAssigneeCandidate,
   Page,
   TaskAction,
   TaskItem,
@@ -9,7 +10,17 @@ import type {
   TaskSubjectType,
   UpdateTaskRequest,
 } from '@ooh/contracts';
-import { appUser, membership, opportunity, organisation, task, type Transaction } from '@ooh/db';
+import {
+  appUser,
+  membership,
+  membershipRole,
+  opportunity,
+  organisation,
+  role,
+  rolePermission,
+  task,
+  type Transaction,
+} from '@ooh/db';
 import { and, asc, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { AuditService } from '../../core/audit/audit.service';
@@ -96,6 +107,11 @@ export class TasksService {
         },
       };
     });
+  }
+
+  /** People a task can be given to: active members whose roles let them see tasks. */
+  assignees(principal: Principal): Promise<TaskAssigneeCandidate[]> {
+    return this.inTenant(principal, (tx) => assigneeCandidates(tx));
   }
 
   get(principal: Principal, id: string): Promise<TaskItem> {
@@ -418,13 +434,29 @@ export class TasksService {
   }
 }
 
-/** Assignees are active members of the company (internal staff or external teams such as decorators). */
-async function assertAssignee(tx: Transaction, membershipId: string): Promise<void> {
-  const [member] = await tx
-    .select({ status: membership.status })
+/** Active members holding task.read through an active role (anyone else could never see the task). */
+function assigneeCandidates(tx: Transaction, membershipId?: string): Promise<TaskAssigneeCandidate[]> {
+  return tx
+    .selectDistinct({
+      membershipId: membership.id,
+      displayName: appUser.displayName,
+      kind: membership.kind,
+    })
     .from(membership)
-    .where(eq(membership.id, membershipId));
-  if (member?.status !== 'ACTIVE') throw invalid('assigneeMembershipId', 'Not an active member');
+    .innerJoin(appUser, eq(appUser.id, membership.userId))
+    .innerJoin(membershipRole, eq(membershipRole.membershipId, membership.id))
+    .innerJoin(role, and(eq(role.id, membershipRole.roleId), eq(role.active, true)))
+    .innerJoin(
+      rolePermission,
+      and(eq(rolePermission.roleId, role.id), eq(rolePermission.permissionKey, 'task.read')),
+    )
+    .where(and(eq(membership.status, 'ACTIVE'), membershipId ? eq(membership.id, membershipId) : undefined))
+    .orderBy(asc(appUser.displayName));
+}
+
+async function assertAssignee(tx: Transaction, membershipId: string): Promise<void> {
+  const [candidate] = await assigneeCandidates(tx, membershipId);
+  if (!candidate) throw invalid('assigneeMembershipId', 'Not an active member who can see tasks');
 }
 
 function invalid(path: string, message: string): AppError {
