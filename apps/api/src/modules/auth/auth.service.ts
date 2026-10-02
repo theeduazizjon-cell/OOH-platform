@@ -18,6 +18,21 @@ export interface IssuedSession {
   readonly refresh: { readonly value: string; readonly expiresAt: Date };
 }
 
+/**
+ * How long the token rotated immediately before the family's current one stays acceptable (it is
+ * then rotated again, not treated as reuse). Covers refresh responses lost after server-side
+ * rotation; see ADR-0006.
+ */
+export const REFRESH_REUSE_GRACE_MS = 30_000;
+
+type RefreshTokenRow = typeof refreshToken.$inferSelect;
+
+interface StoredRefreshToken {
+  readonly id: string;
+  readonly secret: string;
+  readonly expiresAt: Date;
+}
+
 const INVALID_REFRESH = () => new AppError('UNAUTHENTICATED', 'Session expired. Please sign in again.');
 
 @Injectable()
@@ -82,11 +97,17 @@ export class AuthService {
   /**
    * Rotates the refresh token. Presenting an already-rotated or revoked token means it was
    * stolen or replayed: the whole token family is revoked and the user must sign in again.
+   *
+   * Exception (grace window): the token rotated *immediately* before the family's current one may
+   * be presented again within {@link REFRESH_REUSE_GRACE_MS} of its rotation. That happens when a
+   * refresh response is lost (page reload, closed tab, network drop) after the server rotated but
+   * before the browser stored the new cookie. The family is rotated again instead of revoked, and
+   * the successor the browser never received is revoked, so only one live token remains.
    */
   async refresh(cookie: RefreshCookie | null, client: ClientInfo): Promise<IssuedSession> {
     if (!cookie) throw INVALID_REFRESH();
 
-    const current = await this.database.withUser(cookie.userId, async (tx) => {
+    const outcome = await this.database.withUser(cookie.userId, async (tx) => {
       const [row] = await tx
         .select()
         .from(refreshToken)
@@ -94,33 +115,38 @@ export class AuthService {
         .for('update');
       if (!row || !this.tokens.refreshSecretMatches(cookie.secret, row.tokenHash))
         return { kind: 'invalid' as const };
-      if (row.revokedAt || row.rotatedAt) {
-        await this.revokeFamily(tx, row.familyId, 'reuse_detected');
-        return { kind: 'reuse' as const, row };
-      }
+      if (row.revokedAt) return this.reuseDetected(tx, row);
       if (row.expiresAt.getTime() <= Date.now()) return { kind: 'invalid' as const };
-      // Claim the token inside this transaction so a concurrent refresh can't use it twice.
-      await tx.update(refreshToken).set({ rotatedAt: new Date() }).where(eq(refreshToken.id, row.id));
-      return { kind: 'ok' as const, row };
+      if (row.rotatedAt) {
+        const supersededId = await this.claimGrace(tx, row);
+        if (!supersededId) return this.reuseDetected(tx, row);
+        // The previous token keeps its original rotated_at, so the window can't be extended.
+        const next = await this.rotate(tx, row, client, {});
+        return { kind: 'grace' as const, row, next, supersededId };
+      }
+      // Rotation (claim + successor) is one transaction, so a concurrent refresh with the same token
+      // blocks on the row lock and then sees a complete chain.
+      const next = await this.rotate(tx, row, client, { rotatedAt: new Date() });
+      return { kind: 'ok' as const, row, next };
     });
 
-    if (current.kind === 'reuse') {
+    if (outcome.kind === 'reuse') {
       this.logger.warn(`Refresh token reuse detected for user ${cookie.userId}; family revoked`);
       await this.auditInTenant(
-        current.row.activeTenantId,
+        outcome.row.activeTenantId,
         cookie.userId,
         'auth.refresh_reuse_detected',
         client,
         {
-          familyId: current.row.familyId,
+          familyId: outcome.row.familyId,
         },
       );
       throw INVALID_REFRESH();
     }
-    if (current.kind === 'invalid') throw INVALID_REFRESH();
+    if (outcome.kind === 'invalid') throw INVALID_REFRESH();
 
-    const { row } = current;
-    const issued = await this.issueSession(cookie.userId, row.activeTenantId, row.familyId, client).catch(
+    const { row, next } = outcome;
+    const issued = await this.sessionFor(cookie.userId, row.activeTenantId, next).catch(
       async (error: unknown) => {
         // Membership gone or suspended: end the whole session family.
         await this.database.withUser(cookie.userId, (tx) =>
@@ -129,12 +155,13 @@ export class AuthService {
         throw error;
       },
     );
-    await this.database.withUser(cookie.userId, (tx) =>
-      tx
-        .update(refreshToken)
-        .set({ replacedById: this.tokenIdOf(issued) })
-        .where(eq(refreshToken.id, row.id)),
-    );
+    if (outcome.kind === 'grace') {
+      this.logger.log(`Refresh grace used for user ${cookie.userId}; lost rotation re-issued`);
+      await this.auditInTenant(row.activeTenantId, cookie.userId, 'auth.refresh_grace_used', client, {
+        familyId: row.familyId,
+        supersededTokenId: outcome.supersededId,
+      });
+    }
     return issued;
   }
 
@@ -265,24 +292,21 @@ export class AuthService {
   ): Promise<IssuedSession> {
     const access: MembershipAccess | null = await this.access.resolve(tenantId, userId, { fresh: true });
     if (!access) throw new AppError('NO_ACTIVE_MEMBERSHIP', 'You do not have access to this company.');
-
-    const { secret, hash } = this.tokens.newRefreshSecret();
-    const expiresAt = this.tokens.refreshTokenExpiry();
-    const [stored] = await this.database.withUser(userId, (tx) =>
-      tx
-        .insert(refreshToken)
-        .values({
-          userId,
-          familyId,
-          tokenHash: hash,
-          activeTenantId: tenantId,
-          expiresAt,
-          ip: client.ip,
-          userAgent: client.userAgent,
-        })
-        .returning({ id: refreshToken.id }),
+    const stored = await this.database.withUser(userId, (tx) =>
+      this.insertRefreshToken(tx, { userId, familyId, activeTenantId: tenantId }, client),
     );
-    if (!stored) throw new Error('Refresh token was not stored');
+    return this.sessionFor(userId, tenantId, stored, access);
+  }
+
+  /** Signs the access token for a stored refresh token (resolving access unless already known). */
+  private async sessionFor(
+    userId: string,
+    tenantId: string,
+    stored: StoredRefreshToken,
+    known?: MembershipAccess,
+  ): Promise<IssuedSession> {
+    const access = known ?? (await this.access.resolve(tenantId, userId, { fresh: true }));
+    if (!access) throw new AppError('NO_ACTIVE_MEMBERSHIP', 'You do not have access to this company.');
 
     const accessToken = await this.tokens.signAccessToken({
       userId,
@@ -297,12 +321,72 @@ export class AuthService {
         tenantId,
         membershipId: access.membershipId,
       },
-      refresh: { value: TokenService.formatRefreshCookie({ userId, tokenId: stored.id, secret }), expiresAt },
+      refresh: {
+        value: TokenService.formatRefreshCookie({ userId, tokenId: stored.id, secret: stored.secret }),
+        expiresAt: stored.expiresAt,
+      },
     };
   }
 
-  private tokenIdOf(issued: IssuedSession): string {
-    return TokenService.parseRefreshCookie(issued.refresh.value)!.tokenId;
+  private async insertRefreshToken(
+    tx: Transaction,
+    values: { userId: string; familyId: string; activeTenantId: string },
+    client: ClientInfo,
+  ): Promise<StoredRefreshToken> {
+    const { secret, hash } = this.tokens.newRefreshSecret();
+    const expiresAt = this.tokens.refreshTokenExpiry();
+    const [stored] = await tx
+      .insert(refreshToken)
+      .values({ ...values, tokenHash: hash, expiresAt, ip: client.ip, userAgent: client.userAgent })
+      .returning({ id: refreshToken.id });
+    if (!stored) throw new Error('Refresh token was not stored');
+    return { id: stored.id, secret, expiresAt };
+  }
+
+  /** Issues the family's next token and links `row` to it (marking it rotated when asked). */
+  private async rotate(
+    tx: Transaction,
+    row: RefreshTokenRow,
+    client: ClientInfo,
+    mark: { rotatedAt?: Date },
+  ): Promise<StoredRefreshToken> {
+    const next = await this.insertRefreshToken(
+      tx,
+      { userId: row.userId, familyId: row.familyId, activeTenantId: row.activeTenantId },
+      client,
+    );
+    await tx
+      .update(refreshToken)
+      .set({ ...mark, replacedById: next.id })
+      .where(eq(refreshToken.id, row.id));
+    return next;
+  }
+
+  /**
+   * Grace check for an already-rotated `row`: allowed only within the window and only while its
+   * successor is the family's live token (not itself rotated or revoked). On success the successor
+   * is revoked and its id returned; otherwise null (treat as reuse).
+   */
+  private async claimGrace(tx: Transaction, row: RefreshTokenRow): Promise<string | null> {
+    if (!row.rotatedAt || !row.replacedById) return null;
+    if (Date.now() - row.rotatedAt.getTime() > REFRESH_REUSE_GRACE_MS) return null;
+    const [successor] = await tx
+      .select()
+      .from(refreshToken)
+      .where(eq(refreshToken.id, row.replacedById))
+      .for('update');
+    if (!successor || successor.familyId !== row.familyId || successor.rotatedAt || successor.revokedAt)
+      return null;
+    await tx
+      .update(refreshToken)
+      .set({ revokedAt: new Date(), revokedReason: 'superseded_by_grace' })
+      .where(eq(refreshToken.id, successor.id));
+    return successor.id;
+  }
+
+  private async reuseDetected(tx: Transaction, row: RefreshTokenRow) {
+    await this.revokeFamily(tx, row.familyId, 'reuse_detected');
+    return { kind: 'reuse' as const, row };
   }
 
   private async revokeFamily(tx: Transaction, familyId: string, reason: string): Promise<void> {
