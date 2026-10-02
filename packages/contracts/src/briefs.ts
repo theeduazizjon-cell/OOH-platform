@@ -51,6 +51,8 @@ export interface BriefDetail extends BriefListItem {
   specialRequirements: string | null;
   discardReason: string | null;
   confirmedAt: string | null;
+  /** Set once converted: where the stores went. */
+  convertedCampaign: { id: string; code: string; name: string } | null;
   /** Per field: AI, HUMAN or AI_EDITED (empty for manual briefs). */
   fieldProvenance: Record<string, 'AI' | 'HUMAN' | 'AI_EDITED'>;
   lines: BriefLineItem[];

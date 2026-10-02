@@ -25,7 +25,14 @@ export const BRIEF_CONFLICT_MESSAGE =
 const ACTION_LABELS: Record<BriefAction, string> = {
   confirm: 'Confirm brief',
   reopen: 'Reopen',
+  convert: 'Create campaign',
   discard: 'Discard',
+};
+const ACTION_NOTICES: Record<BriefAction, string> = {
+  confirm: 'Brief confirmed.',
+  reopen: 'Brief reopened for changes.',
+  convert: 'Campaign created with one location per store.',
+  discard: 'Brief discarded.',
 };
 
 /** What still blocks `confirm`, in the user's words (the API checks the same rule). */
@@ -81,11 +88,7 @@ export function BriefPage({ briefId }: { briefId: string }) {
     try {
       await change(b, 'POST', `/actions/${action}`, body);
       setDiscarding(false);
-      setNotice(
-        { confirm: 'Brief confirmed.', reopen: 'Brief reopened for changes.', discard: 'Brief discarded.' }[
-          action
-        ],
-      );
+      setNotice(ACTION_NOTICES[action]);
     } catch (caught) {
       if (caught instanceof ApiError && caught.problem?.errors?.length) {
         setError(caught.problem.errors.map((e) => e.message).join(' · '));
@@ -133,6 +136,11 @@ export function BriefPage({ briefId }: { briefId: string }) {
               .join(' · ')}
           </p>
           {b.discardReason && <p className="text-sm text-slate-600">Discarded: {b.discardReason}</p>}
+          {b.convertedCampaign && (
+            <p className="text-sm text-slate-600">
+              Converted into campaign {b.convertedCampaign.code} · {b.convertedCampaign.name}
+            </p>
+          )}
         </div>
         <span className="flex flex-wrap gap-2">
           {actions.map((a) => (

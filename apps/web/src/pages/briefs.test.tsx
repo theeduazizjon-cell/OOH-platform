@@ -54,6 +54,7 @@ const brief = (over: Partial<BriefDetail> = {}): BriefDetail => ({
   specialRequirements: null,
   discardReason: null,
   confirmedAt: null,
+  convertedCampaign: null,
   fieldProvenance: {},
   lines: [],
   actions: ['confirm', 'discard'],

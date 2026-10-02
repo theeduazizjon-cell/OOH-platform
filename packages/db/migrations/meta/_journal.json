@@ -141,6 +141,20 @@
       "when": 1790962840164,
       "tag": "0019_briefs_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1790979327042,
+      "tag": "0020_campaigns",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1790979339837,
+      "tag": "0021_campaigns_rls",
+      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,7 @@ import {
   type BriefDetail,
   type BriefListItem,
   briefListQuerySchema,
+  convertBriefRequestSchema,
   createBriefRequestSchema,
   discardBriefRequestSchema,
   type Page,
@@ -130,6 +131,26 @@ export class BriefsController {
     return this.act(principal, id, 'reopen', {}, ifMatch, request);
   }
 
+  /** CONFIRMED → CONVERTED: a new campaign, or stores added to an existing one (body). */
+  @Post('briefs/:id/actions/convert')
+  @HttpCode(200)
+  @RequirePermission('brief.convert')
+  convert(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+    @IfMatchHeader() ifMatch: IfMatch,
+    @Req() request: FastifyRequest,
+  ): Promise<BriefDetail> {
+    return this.briefs.convert(
+      principal,
+      id,
+      parseWith(convertBriefRequestSchema, body ?? {}),
+      ifMatch,
+      clientInfo(request),
+    );
+  }
+
   @Post('briefs/:id/actions/discard')
   @HttpCode(200)
   @RequirePermission('brief.discard')
@@ -146,7 +167,7 @@ export class BriefsController {
   private act(
     principal: Principal,
     id: string,
-    action: BriefAction,
+    action: Exclude<BriefAction, 'convert'>,
     input: { reason?: string },
     ifMatch: IfMatch,
     request: FastifyRequest,

@@ -256,7 +256,7 @@ describe('briefs', () => {
     ).json();
     b = (await send('buyer', 'PUT', `/briefs/${b.id}/lines`, { lines: [sinaia] }, b.version)).json();
     b = (await act('buyer', b, 'confirm')).json<BriefDetail>();
-    expect(b).toMatchObject({ status: 'CONFIRMED', actions: ['reopen', 'discard'] });
+    expect(b).toMatchObject({ status: 'CONFIRMED', actions: ['reopen', 'convert', 'discard'] });
     expect(b.confirmedAt).not.toBeNull();
     expect(code(await send('buyer', 'PATCH', `/briefs/${b.id}`, { title: 'Late' }, b.version))).toBe(
       'INVALID_TRANSITION',

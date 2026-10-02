@@ -4,6 +4,7 @@ import {
   BRIEF_TRANSITIONS,
   type BriefAction,
   type BriefDetail,
+  type ConvertBriefRequest,
   type BriefLineInput,
   type BriefLineItem,
   type BriefListItem,
@@ -15,7 +16,16 @@ import {
   type UpdateBriefRequest,
   wonOpportunityTaskKey,
 } from '@ooh/contracts';
-import { appUser, brief, briefLine, membership, opportunity, organisation, type Transaction } from '@ooh/db';
+import {
+  appUser,
+  brief,
+  briefLine,
+  campaign,
+  membership,
+  opportunity,
+  organisation,
+  type Transaction,
+} from '@ooh/db';
 import { and, asc, eq, isNull, lt, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { AuditService } from '../../core/audit/audit.service';
@@ -26,6 +36,7 @@ import { type ClientInfo } from '../../core/http/client-info';
 import { assertIfMatch, type IfMatch } from '../../core/http/concurrency';
 import { decodeIdCursor, encodeIdCursor } from '../../core/http/cursor';
 import { TransitionsService } from '../../core/state/transitions.service';
+import { CampaignsService } from '../campaigns/campaigns.service';
 import { TasksService } from '../tasks/tasks.service';
 
 type Row = typeof brief.$inferSelect;
@@ -59,6 +70,7 @@ export class BriefsService {
     private readonly audit: AuditService,
     private readonly transitions: TransitionsService,
     private readonly tasks: TasksService,
+    private readonly campaigns: CampaignsService,
   ) {}
 
   list(principal: Principal, query: BriefListQuery): Promise<Page<BriefListItem>> {
@@ -264,7 +276,7 @@ export class BriefsService {
   transition(
     principal: Principal,
     id: string,
-    action: BriefAction,
+    action: Exclude<BriefAction, 'convert'>,
     input: { reason?: string },
     ifMatch: IfMatch,
     client: ClientInfo,
@@ -290,10 +302,11 @@ export class BriefsService {
         }
       }
       assertIfMatch(ifMatch, current.version);
+      const to = rule.to === 'PREVIOUS' ? current.status : rule.to; // briefs never resume
       await tx
         .update(brief)
         .set({
-          status: rule.to,
+          status: to,
           ...(action === 'confirm' ? { confirmedAt: new Date() } : {}),
           ...(action === 'reopen' ? { confirmedAt: null } : {}),
           ...(action === 'discard' ? { discardReason: input.reason } : {}),
@@ -304,10 +317,100 @@ export class BriefsService {
         subjectType: 'brief',
         subjectId: id,
         from: current.status,
-        to: rule.to,
+        to,
         action,
         event: { confirm: 'brief.confirmed', reopen: 'brief.reopened', discard: 'brief.discarded' }[action],
         ...(input.reason ? { reason: input.reason } : {}),
+      });
+      return this.loadDetail(tx, principal, id);
+    });
+  }
+
+  /**
+   * CONFIRMED → CONVERTED (04-user-flows.md A5): a new campaign (or an existing one of the same client,
+   * OPD-07b) gets one DRAFT location per store line, all in one transaction. Each location's
+   * `campaign_location.created` event drives geocoding and its "Research …" task (M3c).
+   */
+  convert(
+    principal: Principal,
+    id: string,
+    input: ConvertBriefRequest,
+    ifMatch: IfMatch,
+    client: ClientInfo,
+  ): Promise<BriefDetail> {
+    return this.inTenant(principal, async (tx) => {
+      const current = await this.lock(tx, principal, id, 'brief.convert');
+      if (current.status !== 'CONFIRMED') {
+        throw new AppError('INVALID_TRANSITION', 'Only a confirmed brief becomes a campaign.', {
+          meta: { allowedActions: allowedActions(BRIEF_TRANSITIONS, current.status) },
+        });
+      }
+      if (!current.clientOrganisationId) throw invalidField('clientOrganisationId', 'Choose the client');
+      let campaignId = input.campaignId;
+      if (campaignId) {
+        if (!principal.permissions.has('campaign_location.manage'))
+          throw new AppError('FORBIDDEN', 'Adding stores to a campaign needs campaign_location.manage.');
+        const [target] = await tx
+          .select({ clientId: campaign.clientOrganisationId, status: campaign.status })
+          .from(campaign)
+          .where(and(eq(campaign.id, campaignId), isNull(campaign.archivedAt)))
+          .for('update');
+        if (!target) throw invalidField('campaignId', 'Unknown campaign');
+        if (target.clientId !== current.clientOrganisationId)
+          throw invalidField('campaignId', 'The campaign belongs to another client');
+        if (target.status === 'COMPLETED' || target.status === 'CANCELLED')
+          throw new AppError('INVALID_TRANSITION', `That campaign is ${target.status.toLowerCase()}.`);
+      } else if (!principal.permissions.has('campaign.create')) {
+        throw new AppError('FORBIDDEN', 'Creating a campaign needs campaign.create.');
+      }
+      assertIfMatch(ifMatch, current.version);
+
+      campaignId ??= await this.campaigns.insertCampaign(tx, principal, client, {
+        name: input.campaignName ?? current.title,
+        clientOrganisationId: current.clientOrganisationId,
+        agencyOrganisationId: current.agencyOrganisationId,
+        opportunityId: current.opportunityId,
+        ownerMembershipId: current.ownerMembershipId,
+        notes: current.specialRequirements,
+      });
+      const lines = await tx
+        .select()
+        .from(briefLine)
+        .where(eq(briefLine.briefId, id))
+        .orderBy(asc(briefLine.position));
+      const locationIds: string[] = [];
+      for (const line of lines) {
+        locationIds.push(
+          await this.campaigns.insertLocation(tx, principal, client, campaignId, {
+            briefLineId: line.id,
+            name: line.storeName,
+            address: line.address,
+            city: line.city,
+            county: line.county,
+            startDate: line.startDate ?? current.requestedStart,
+            endDate: line.endDate ?? current.requestedEnd,
+            requestedUnits: line.requestedUnits,
+            buyerMembershipId: current.ownerMembershipId,
+          }),
+        );
+      }
+      await tx
+        .update(brief)
+        .set({
+          status: 'CONVERTED',
+          convertedCampaignId: campaignId,
+          convertedAt: new Date(),
+          version: sql`${brief.version} + 1`,
+        })
+        .where(eq(brief.id, id));
+      await this.transitions.record(tx, principal, client, {
+        subjectType: 'brief',
+        subjectId: id,
+        from: 'CONFIRMED',
+        to: 'CONVERTED',
+        action: 'convert',
+        event: 'brief.converted',
+        payload: { campaignId, locationIds, newCampaign: !input.campaignId, deadline: current.deadline },
       });
       return this.loadDetail(tx, principal, id);
     });
@@ -400,19 +503,28 @@ export class BriefsService {
         discardReason: brief.discardReason,
         confirmedAt: brief.confirmedAt,
         fieldProvenance: brief.fieldProvenance,
+        convertedCampaignId: brief.convertedCampaignId,
+        campaignCode: campaign.code,
+        campaignName: campaign.name,
       })
       .from(brief)
+      .leftJoin(campaign, eq(campaign.id, brief.convertedCampaignId))
       .where(eq(brief.id, id));
     const lines = await tx
       .select()
       .from(briefLine)
       .where(eq(briefLine.briefId, id))
       .orderBy(asc(briefLine.position));
+    const { convertedCampaignId, campaignCode, campaignName, ...details } = extra!;
     return {
       ...item,
-      ...extra!,
-      currency: extra!.currency as BriefDetail['currency'],
-      confirmedAt: extra!.confirmedAt?.toISOString() ?? null,
+      ...details,
+      convertedCampaign:
+        convertedCampaignId && campaignCode && campaignName
+          ? { id: convertedCampaignId, code: campaignCode, name: campaignName }
+          : null,
+      currency: details.currency as BriefDetail['currency'],
+      confirmedAt: details.confirmedAt?.toISOString() ?? null,
       lines: lines.map(lineItem),
       actions: allowedActions(BRIEF_TRANSITIONS, item.status),
     };
@@ -526,6 +638,8 @@ async function assertOwner(tx: Transaction, membershipId: string): Promise<void>
     throw invalid('ownerMembershipId', 'Not an active internal member');
   }
 }
+
+const invalidField = (path: string, message: string) => invalid(path, message);
 
 function invalid(path: string, message: string): AppError {
   return new AppError('VALIDATION_FAILED', `${message}.`, { errors: [{ path, message }] });
