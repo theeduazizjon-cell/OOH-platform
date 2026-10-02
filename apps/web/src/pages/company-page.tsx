@@ -1,6 +1,7 @@
 import {
   type AccountOwnerCandidate,
   type ActivityItem,
+  type CampaignListItem,
   type ClassificationItem,
   type ContactListItem,
   etagOf,
@@ -19,6 +20,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { hasPermission, useMe } from '@/lib/me';
 import { ActivityTimeline, formatWhen } from './activity-timeline';
+import { CampaignsTable } from './campaigns-page';
 import { CompanyContacts } from './company-contacts';
 import { CompanyForm } from './company-form';
 import { CompanyOpportunities } from './company-opportunities';
@@ -275,8 +277,30 @@ export function CompanyPage({ companyId }: { companyId: string }) {
         <CompanyContacts organisationId={c.id} archived={archived} />
         <CompanyRelationships organisationId={c.id} archived={archived} />
       </div>
+      <CompanyCampaigns organisationId={c.id} />
       <ActivityTimeline organisationId={c.id} archived={archived} />
     </div>
+  );
+}
+
+/** The company's campaigns as the client (09-screen-map: active / upcoming / historical). */
+function CompanyCampaigns({ organisationId }: { organisationId: string }) {
+  const { data: me } = useMe();
+  const campaigns = useQuery({
+    queryKey: ['campaigns', 'client', organisationId],
+    queryFn: () =>
+      api.request<Page<CampaignListItem>>(`/campaigns?clientOrganisationId=${organisationId}&limit=100`),
+    enabled: hasPermission(me, 'campaign.read'),
+  });
+  if (!hasPermission(me, 'campaign.read')) return null;
+  return (
+    <section className="mt-6 space-y-3 border-t border-slate-200 pt-4">
+      <h3 className="text-sm font-semibold">Campaigns</h3>
+      {campaigns.error && <p className="text-sm text-red-700">{campaigns.error.message}</p>}
+      {campaigns.data && (
+        <CampaignsTable rows={campaigns.data.data} showClient={false} emptyText="No campaigns yet." />
+      )}
+    </section>
   );
 }
 

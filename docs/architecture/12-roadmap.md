@@ -25,7 +25,7 @@ Follows the roadmap's sequence [R§51] with **three justified adjustments**:
 | M3a.1 Briefs API: brief + lines, state machine (contracts transition table), status_history, outbox_event (written, not yet dispatched), brief from won opportunity | ✅ done 2026-10-03 (branch `feat/m3-briefs`)                        |
 | M3a.2 Requests inbox (to review / confirmed / all), brief editor (details, stores table, confirm checklist), "Create brief" on won opportunities: web               | ✅ done 2026-10-03 (branch `feat/m3-requests-ui`)                   |
 | M3b.1 Campaigns + locations (hold/resume/cancel, cascade), brief → campaign convert (new or existing, OPD-07b), portal ORGANISATION scope: API                      | ✅ done 2026-10-03 (branch `feat/m3-campaigns`)                     |
-| M3b.2 Campaigns list + campaign page, convert dialog: web                                                                                                           | next                                                                |
+| M3b.2 Campaigns list, campaign page (locations, hold/resume/cancel with reasons, add/edit locations), convert dialog (new or existing), Company 360° campaigns: web | ✅ done 2026-10-03 (branch `feat/m3-campaigns-ui`)                  |
 | M3c Outbox worker, geocoding job + store pin (`geography(Point)`, needs real PostGIS locally), event-driven tasks                                                   | planned                                                             |
 | M3d Campaign screens, store pin confirmation                                                                                                                        | planned                                                             |
 

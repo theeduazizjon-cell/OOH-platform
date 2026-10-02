@@ -17,6 +17,7 @@ import { api, ApiError } from '@/lib/api';
 import { hasPermission, useMe } from '@/lib/me';
 import { BriefForm } from './brief-form';
 import { BriefLinesEditor } from './brief-lines-editor';
+import { ConvertForm } from './convert-form';
 import { BriefStatusBadge } from './requests-page';
 
 export const BRIEF_CONFLICT_MESSAGE =
@@ -53,6 +54,7 @@ export function BriefPage({ briefId }: { briefId: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [discarding, setDiscarding] = useState(false);
+  const [converting, setConverting] = useState(false);
 
   const opened = useQuery({
     queryKey: ['brief', briefId],
@@ -89,12 +91,14 @@ export function BriefPage({ briefId }: { briefId: string }) {
       await change(b, 'POST', `/actions/${action}`, body);
       setDiscarding(false);
       setNotice(ACTION_NOTICES[action]);
+      return true;
     } catch (caught) {
       if (caught instanceof ApiError && caught.problem?.errors?.length) {
         setError(caught.problem.errors.map((e) => e.message).join(' · '));
       } else {
         setError(caught instanceof ApiError ? caught.message : 'Could not reach the server. Try again.');
       }
+      return false;
     }
   }
 
@@ -138,7 +142,14 @@ export function BriefPage({ briefId }: { briefId: string }) {
           {b.discardReason && <p className="text-sm text-slate-600">Discarded: {b.discardReason}</p>}
           {b.convertedCampaign && (
             <p className="text-sm text-slate-600">
-              Converted into campaign {b.convertedCampaign.code} · {b.convertedCampaign.name}
+              Converted into campaign{' '}
+              <Link
+                to="/app/campaigns/$campaignId"
+                params={{ campaignId: b.convertedCampaign.id }}
+                className="text-brand-700 hover:underline"
+              >
+                {b.convertedCampaign.code} · {b.convertedCampaign.name}
+              </Link>
             </p>
           )}
         </div>
@@ -149,7 +160,9 @@ export function BriefPage({ briefId }: { briefId: string }) {
               variant={a === 'confirm' ? 'primary' : a === 'discard' ? 'ghost' : 'secondary'}
               className={a === 'discard' ? 'text-red-700' : ''}
               disabled={a === 'confirm' && missing.length > 0}
-              onClick={() => (a === 'discard' ? setDiscarding(true) : void act(b, a))}
+              onClick={() =>
+                a === 'discard' ? setDiscarding(true) : a === 'convert' ? setConverting(true) : void act(b, a)
+              }
             >
               {ACTION_LABELS[a]}
             </Button>
@@ -173,10 +186,22 @@ export function BriefPage({ briefId }: { briefId: string }) {
           </ul>
         </Card>
       )}
+      {converting && b.client && (
+        <ConvertForm
+          brief={b}
+          clientId={b.client.id}
+          onCancel={() => setConverting(false)}
+          onConvert={async (body) => {
+            if (await act(b, 'convert', body)) setConverting(false);
+          }}
+        />
+      )}
       {discarding && (
         <DiscardForm
           onCancel={() => setDiscarding(false)}
-          onDiscard={(reason) => act(b, 'discard', { reason })}
+          onDiscard={async (reason) => {
+            await act(b, 'discard', { reason });
+          }}
         />
       )}
 
