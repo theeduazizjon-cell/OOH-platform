@@ -18,6 +18,9 @@ import {
   opportunity,
   pipeline,
   pipelineStage,
+  brief,
+  briefLine,
+  statusHistory,
   task,
 } from '../src/schema';
 import { withTenantTx } from '../src/tenant-context';
@@ -460,6 +463,95 @@ describe('task', () => {
     const row = await insert(tenantA, {});
     await expectPgError(
       inTenant(tenantA, (tx) => tx.delete(task).where(eq(task.id, row.id))),
+      SQLSTATE.INSUFFICIENT_PRIVILEGE,
+    );
+  });
+});
+
+describe('brief', () => {
+  const anyMember = async (tenantId: string) => {
+    const [m] = await owner.db
+      .select({ id: membership.id })
+      .from(membership)
+      .where(eq(membership.tenantId, tenantId))
+      .limit(1);
+    if (m) return m.id;
+    const [u] = await owner.db
+      .insert(appUser)
+      .values({ email: `brief-${tenantId.slice(-6)}-${suffix}@example.com`, displayName: 'Buyer' })
+      .returning({ id: appUser.id });
+    const [created] = await owner.db
+      .insert(membership)
+      .values({ tenantId, userId: u!.id, status: 'ACTIVE' })
+      .returning({ id: membership.id });
+    return created!.id;
+  };
+  const insert = async (tenantId: string, values: Partial<typeof brief.$inferInsert>) => {
+    const ownerMembershipId = await anyMember(tenantId);
+    return inTenant(tenantId, (tx) =>
+      tx
+        .insert(brief)
+        .values({ tenantId, title: 'Store openings', ownerMembershipId, ...values })
+        .returning(),
+    ).then((rows) => rows[0]!);
+  };
+
+  it('enforces the brief state rules in the database', async () => {
+    const draft = await insert(tenantA, {});
+    expect(draft).toMatchObject({ status: 'DRAFT', source: 'MANUAL', datesTbd: false, fieldProvenance: {} });
+    await expectPgError(insert(tenantA, { status: 'CONFIRMED' }), '23514'); // needs confirmed_at
+    await expectPgError(insert(tenantA, { status: 'DISCARDED' }), '23514'); // needs a reason
+    await expectPgError(insert(tenantA, { discardReason: 'x' }), '23514'); // reason only when discarded
+    await expectPgError(insert(tenantA, { source: 'OPPORTUNITY' }), '23514'); // needs the opportunity
+    await expectPgError(
+      insert(tenantA, { requestedStart: '2026-11-10', requestedEnd: '2026-11-01' }),
+      '23514',
+    );
+    await expectPgError(insert(tenantA, { currency: 'USD' }), '23514');
+  });
+
+  it('keeps lines ordered and never mixes tenants', async () => {
+    const draft = await insert(tenantA, {});
+    const line = (values: Partial<typeof briefLine.$inferInsert>) =>
+      inTenant(tenantA, (tx) =>
+        tx
+          .insert(briefLine)
+          .values({ tenantId: tenantA, briefId: draft.id, position: 1, storeName: 'Sinaia', ...values }),
+      );
+    await line({});
+    await expectPgError(line({ storeName: 'Duplicate position' }), UNIQUE_VIOLATION);
+    await expectPgError(line({ position: 2, requestedUnits: 0 }), '23514');
+    const orgB = await createOrg(tenantB, { displayName: `Brief B ${suffix}` });
+    await expectPgError(insert(tenantA, { clientOrganisationId: orgB.id }), SQLSTATE.FOREIGN_KEY_VIOLATION);
+    await expectPgError(
+      inTenant(tenantA, (tx) => tx.delete(brief).where(eq(brief.id, draft.id))),
+      SQLSTATE.INSUFFICIENT_PRIVILEGE,
+    );
+  });
+
+  it('status history is append-only', async () => {
+    const draft = await insert(tenantA, {});
+    const [row] = await inTenant(tenantA, (tx) =>
+      tx
+        .insert(statusHistory)
+        .values({
+          tenantId: tenantA,
+          subjectType: 'brief',
+          subjectId: draft.id,
+          toStatus: 'DRAFT',
+          action: 'create',
+          actorType: 'USER',
+        })
+        .returning(),
+    );
+    await expectPgError(
+      inTenant(tenantA, (tx) =>
+        tx.update(statusHistory).set({ reason: 'x' }).where(eq(statusHistory.id, row!.id)),
+      ),
+      SQLSTATE.INSUFFICIENT_PRIVILEGE,
+    );
+    await expectPgError(
+      inTenant(tenantA, (tx) => tx.delete(statusHistory).where(eq(statusHistory.id, row!.id))),
       SQLSTATE.INSUFFICIENT_PRIVILEGE,
     );
   });

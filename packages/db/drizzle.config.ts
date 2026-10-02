@@ -12,6 +12,7 @@ export default defineConfig({
     './src/schema/config.ts',
     './src/schema/crm.ts',
     './src/schema/work.ts',
+    './src/schema/briefs.ts',
   ],
   out: './migrations',
   strict: true,
