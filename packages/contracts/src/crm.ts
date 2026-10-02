@@ -342,6 +342,7 @@ export interface PipelineStageItem {
   position: number;
   probability: number | null;
   active: boolean;
+  version: number;
 }
 
 export interface PipelineItem {
@@ -349,6 +350,8 @@ export interface PipelineItem {
   name: string;
   isDefault: boolean;
   active: boolean;
+  /** Bumped when the stage order changes (If-Match of PUT …/stage-order). */
+  version: number;
   /** Ordered by position. */
   stages: PipelineStageItem[];
 }
@@ -359,7 +362,48 @@ export interface ActivityTypeItem {
   name: string;
   isSystem: boolean;
   active: boolean;
+  sortOrder: number;
+  version: number;
 }
+
+const stageProbability = z.number().int().min(0).max(100).nullable();
+
+/** POST /config/pipelines/{id}/stages: a new OPEN stage, placed after the existing open ones. */
+export const createStageRequestSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  probability: stageProbability.optional(),
+});
+export type CreateStageRequest = z.infer<typeof createStageRequestSchema>;
+
+/** PATCH /config/stages/{id} (If-Match). Won/Lost stages can be renamed but never disabled. */
+export const updateStageRequestSchema = z
+  .object({
+    name: z.string().trim().min(1).max(60).optional(),
+    probability: stageProbability.optional(),
+    active: z.boolean().optional(),
+  })
+  .refine((body) => Object.values(body).some((v) => v !== undefined), 'Nothing to change');
+export type UpdateStageRequest = z.infer<typeof updateStageRequestSchema>;
+
+/** PUT /config/pipelines/{id}/stage-order (If-Match on the pipeline): every OPEN stage, in order. */
+export const stageOrderRequestSchema = z.object({
+  stageIds: z
+    .array(z.uuid())
+    .min(1)
+    .max(50)
+    .refine((ids) => new Set(ids).size === ids.length, 'Stage ids must be unique'),
+});
+export type StageOrderRequest = z.infer<typeof stageOrderRequestSchema>;
+
+export const createActivityTypeRequestSchema = z.object({
+  name: z.string().trim().min(1).max(60),
+  sortOrder: z.number().int().min(0).max(1000).optional(),
+});
+export type CreateActivityTypeRequest = z.infer<typeof createActivityTypeRequestSchema>;
+
+/** PATCH /config/activity-types/{id} (If-Match). Platform (system) types can't be changed. */
+export const updateActivityTypeRequestSchema = updateClassificationRequestSchema;
+export type UpdateActivityTypeRequest = z.infer<typeof updateActivityTypeRequestSchema>;
 
 const money = z
   .string()

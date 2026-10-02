@@ -262,9 +262,9 @@ export function UsersPage() {
                     <td className="px-4 py-2">{m.roles.map((r) => r.name).join(', ')}</td>
                     {showActions && (
                       // Your own row has no actions: nobody manages themselves (the API refuses too).
-                      <td className="whitespace-nowrap px-4 py-1 text-right">
+                      <td className="px-4 py-1">
                         {!isSelf && (
-                          <>
+                          <div className="flex flex-wrap justify-end gap-x-1">
                             {can.editRoles &&
                               action('Roles', `Edit roles of ${m.email}`, () =>
                                 openPanel({ kind: 'roles', memberId: m.id }),
@@ -298,7 +298,7 @@ export function UsersPage() {
                               action('Reactivate', `Reactivate ${m.email}`, () =>
                                 confirmStatus(m, 'reactivate'),
                               )}
-                          </>
+                          </div>
                         )}
                       </td>
                     )}

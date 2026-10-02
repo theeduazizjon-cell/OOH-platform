@@ -6,13 +6,14 @@ import type {
   UpdateClassificationRequest,
 } from '@ooh/contracts';
 import { organisationClassification, type Transaction } from '@ooh/db';
-import { asc, eq, like, sql } from 'drizzle-orm';
+import { asc, eq, sql } from 'drizzle-orm';
 import { AuditService } from '../../core/audit/audit.service';
 import { type Principal } from '../../core/auth/principal';
 import { DatabaseService } from '../../core/database/database.service';
 import { AppError } from '../../core/http/app-error';
 import { type ClientInfo } from '../../core/http/client-info';
 import { assertIfMatch, type IfMatch } from '../../core/http/concurrency';
+import { configActor, freeKey } from './nomenclature';
 
 const COLUMNS = {
   id: organisationClassification.id,
@@ -50,7 +51,7 @@ export class ClassificationsService {
     client: ClientInfo,
   ): Promise<ClassificationItem> {
     return this.inTenant(principal, async (tx) => {
-      const key = await this.freeKey(tx, input.name);
+      const key = await freeKey(tx, organisationClassification, organisationClassification.key, input.name);
       const [created] = await tx
         .insert(organisationClassification)
         .values({ tenantId: principal.tenantId, key, name: input.name, sortOrder: input.sortOrder ?? 1000 })
@@ -60,7 +61,7 @@ export class ClassificationsService {
         .returning(COLUMNS);
       if (!created) throw new AppError('CONFLICT', 'A classification with this name was just created.');
       await this.audit.record(tx, {
-        ...actor(principal, client),
+        ...configActor(principal, client),
         action: 'config.classification_created',
         subjectType: 'organisation_classification',
         subjectId: created.id,
@@ -104,7 +105,7 @@ export class ClassificationsService {
         .where(eq(organisationClassification.id, id))
         .returning(COLUMNS);
       await this.audit.record(tx, {
-        ...actor(principal, client),
+        ...configActor(principal, client),
         action: 'config.classification_updated',
         subjectType: 'organisation_classification',
         subjectId: id,
@@ -117,40 +118,4 @@ export class ClassificationsService {
   private inTenant<T>(principal: Principal, fn: (tx: Transaction) => Promise<T>): Promise<T> {
     return this.database.withTenant({ tenantId: principal.tenantId, actorUserId: principal.userId }, fn);
   }
-
-  /** Slug of the name, suffixed `_2`, `_3`… when taken (defaults use the bare slugs). */
-  private async freeKey(tx: Transaction, name: string): Promise<string> {
-    const base = slugKey(name);
-    const taken = new Set(
-      (
-        await tx
-          .select({ key: organisationClassification.key })
-          .from(organisationClassification)
-          .where(like(organisationClassification.key, `${base}%`))
-      ).map((r) => r.key),
-    );
-    if (!taken.has(base)) return base;
-    for (let n = 2; ; n++) if (!taken.has(`${base}_${n}`)) return `${base}_${n}`;
-  }
-}
-
-export function slugKey(name: string): string {
-  const slug = name
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_+|_+$/g, '')
-    .slice(0, 40);
-  return /^[a-z]/.test(slug) ? slug : `c_${slug || 'item'}`;
-}
-
-function actor(principal: Principal, client: ClientInfo) {
-  return {
-    tenantId: principal.tenantId,
-    actorType: 'USER' as const,
-    actorUserId: principal.userId,
-    actorMembershipId: principal.membershipId,
-    client,
-  };
 }

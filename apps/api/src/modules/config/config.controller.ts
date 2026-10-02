@@ -6,16 +6,23 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Req,
   UseInterceptors,
 } from '@nestjs/common';
 import {
   type ActivityTypeItem,
   type ClassificationItem,
+  createActivityTypeRequestSchema,
   createClassificationRequestSchema,
+  createStageRequestSchema,
   type Page,
   type PipelineItem,
+  type PipelineStageItem,
+  stageOrderRequestSchema,
+  updateActivityTypeRequestSchema,
   updateClassificationRequestSchema,
+  updateStageRequestSchema,
 } from '@ooh/contracts';
 import type { FastifyRequest } from 'fastify';
 import { CurrentPrincipal, type Principal, RequirePermission } from '../../core/auth/principal';
@@ -41,10 +48,95 @@ export class ConfigController {
     return this.sales.pipelines(principal);
   }
 
+  @Post('pipelines/:id/stages')
+  @RequirePermission('config.manage')
+  createStage(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id', ParseUUIDPipe) pipelineId: string,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ): Promise<PipelineStageItem> {
+    return this.sales.createStage(
+      principal,
+      pipelineId,
+      parseWith(createStageRequestSchema, body),
+      clientInfo(request),
+    );
+  }
+
+  /** Every OPEN stage in the new order; If-Match is the pipeline's version. */
+  @Put('pipelines/:id/stage-order')
+  @RequirePermission('config.manage')
+  reorderStages(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id', ParseUUIDPipe) pipelineId: string,
+    @Body() body: unknown,
+    @IfMatchHeader() ifMatch: IfMatch,
+    @Req() request: FastifyRequest,
+  ): Promise<PipelineItem> {
+    return this.sales.reorderStages(
+      principal,
+      pipelineId,
+      parseWith(stageOrderRequestSchema, body),
+      ifMatch,
+      clientInfo(request),
+    );
+  }
+
+  @Patch('stages/:id')
+  @RequirePermission('config.manage')
+  updateStage(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+    @IfMatchHeader() ifMatch: IfMatch,
+    @Req() request: FastifyRequest,
+  ): Promise<PipelineStageItem> {
+    return this.sales.updateStage(
+      principal,
+      id,
+      parseWith(updateStageRequestSchema, body),
+      ifMatch,
+      clientInfo(request),
+    );
+  }
+
   @Get('activity-types')
   @RequirePermission('config.read')
   listActivityTypes(@CurrentPrincipal() principal: Principal): Promise<ActivityTypeItem[]> {
     return this.sales.activityTypes(principal);
+  }
+
+  @Post('activity-types')
+  @RequirePermission('config.manage')
+  createActivityType(
+    @CurrentPrincipal() principal: Principal,
+    @Body() body: unknown,
+    @Req() request: FastifyRequest,
+  ): Promise<ActivityTypeItem> {
+    return this.sales.createActivityType(
+      principal,
+      parseWith(createActivityTypeRequestSchema, body),
+      clientInfo(request),
+    );
+  }
+
+  @Patch('activity-types/:id')
+  @RequirePermission('config.manage')
+  updateActivityType(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+    @IfMatchHeader() ifMatch: IfMatch,
+    @Req() request: FastifyRequest,
+  ): Promise<ActivityTypeItem> {
+    return this.sales.updateActivityType(
+      principal,
+      id,
+      parseWith(updateActivityTypeRequestSchema, body),
+      ifMatch,
+      clientInfo(request),
+    );
   }
 
   @Get('classifications')

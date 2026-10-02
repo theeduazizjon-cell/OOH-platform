@@ -15,6 +15,7 @@ import { CompaniesPage } from '@/pages/companies-page';
 import { ContactsPage } from '@/pages/contacts-page';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { LoginPage, safeRedirect } from '@/pages/login-page';
+import { NomenclaturesPage } from '@/pages/nomenclatures-page';
 import { PipelinePage } from '@/pages/pipeline-page';
 import { PlaceholderPage } from '@/pages/placeholder-page';
 import { RolesPage } from '@/pages/roles-page';
@@ -101,6 +102,16 @@ const rolesRoute = createRoute({
   ),
 });
 
+const nomenclaturesRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'admin/nomenclatures',
+  component: () => (
+    <RequirePermission permission="config.read">
+      <NomenclaturesPage />
+    </RequirePermission>
+  ),
+});
+
 const companiesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: 'crm/companies',
@@ -152,6 +163,7 @@ const routeTree = rootRoute.addChildren([
     dashboardRoute,
     usersRoute,
     rolesRoute,
+    nomenclaturesRoute,
     companiesRoute,
     contactsRoute,
     pipelineRoute,
