@@ -14,12 +14,14 @@ const stage = (id: string, kind: 'OPEN' | 'WON' | 'LOST', position: number, acti
   position,
   probability: null,
   active,
+  version: 1,
 });
 const pipeline: PipelineItem = {
   id: 'p1',
   name: 'Sales',
   isDefault: true,
   active: true,
+  version: 1,
   stages: [
     stage('won', 'WON', 5),
     stage('offer', 'OPEN', 2),
@@ -86,9 +88,17 @@ describe('pipeline helpers', () => {
 
   it('only offers non-system, active activity types for logging', () => {
     const types: ActivityTypeItem[] = [
-      { id: '1', key: 'call', name: 'Call', isSystem: false, active: true },
-      { id: '2', key: 'stage_change', name: 'Stage change', isSystem: true, active: true },
-      { id: '3', key: 'fax', name: 'Fax', isSystem: false, active: false },
+      { id: '1', key: 'call', name: 'Call', isSystem: false, active: true, sortOrder: 0, version: 1 },
+      {
+        id: '2',
+        key: 'stage_change',
+        name: 'Stage change',
+        isSystem: true,
+        active: true,
+        sortOrder: 0,
+        version: 1,
+      },
+      { id: '3', key: 'fax', name: 'Fax', isSystem: false, active: false, sortOrder: 0, version: 1 },
     ];
     expect(loggableTypes(types).map((t) => t.key)).toEqual(['call']);
   });

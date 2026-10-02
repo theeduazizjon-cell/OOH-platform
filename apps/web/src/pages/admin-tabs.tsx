@@ -1,12 +1,17 @@
 import { Link } from '@tanstack/react-router';
 import { hasPermission, useMe } from '@/lib/me';
 
-/** Admin sub-navigation (docs/architecture/09-screen-map.md: Admin → Users, Roles & Permissions). */
+/** Admin sub-navigation (docs/architecture/09-screen-map.md: Admin → Users, Roles & Permissions, Nomenclatures). */
 export function AdminTabs() {
   const { data: me } = useMe();
   const tabs = [
     { to: '/app/admin/users' as const, label: 'Users', visible: hasPermission(me, 'users.read') },
     { to: '/app/admin/roles' as const, label: 'Roles', visible: hasPermission(me, 'roles.read') },
+    {
+      to: '/app/admin/nomenclatures' as const,
+      label: 'Nomenclatures',
+      visible: hasPermission(me, 'config.manage'),
+    },
   ].filter((tab) => tab.visible);
   if (tabs.length < 2) return null;
   return (
