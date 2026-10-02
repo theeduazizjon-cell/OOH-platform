@@ -295,3 +295,201 @@ export interface AccountOwnerCandidate {
   membershipId: string;
   displayName: string;
 }
+
+// ── sales pipeline (defaults) ────────────────────────────────────────────────
+
+export const PIPELINE_STAGE_KINDS = ['OPEN', 'WON', 'LOST'] as const;
+export type PipelineStageKind = (typeof PIPELINE_STAGE_KINDS)[number];
+
+/**
+ * Installed once per tenant (tenants then edit it). Per OPD-01 the first OPEN stages are the lead
+ * stages (R§7 pipeline), so there is no separate lead entity.
+ */
+export const DEFAULT_PIPELINE = {
+  name: 'Sales pipeline',
+  stages: [
+    { name: 'Lead', kind: 'OPEN', probability: 10 },
+    { name: 'Contacted', kind: 'OPEN', probability: 20 },
+    { name: 'Qualified', kind: 'OPEN', probability: 30 },
+    { name: 'Proposal', kind: 'OPEN', probability: 50 },
+    { name: 'Negotiation', kind: 'OPEN', probability: 75 },
+    { name: 'Won', kind: 'WON', probability: 100 },
+    { name: 'Lost', kind: 'LOST', probability: 0 },
+  ],
+} as const satisfies {
+  name: string;
+  stages: readonly { name: string; kind: PipelineStageKind; probability: number }[];
+};
+
+/** Timeline entry kinds. `stage_change` is written by the platform when an opportunity moves. */
+export const DEFAULT_ACTIVITY_TYPES = [
+  { key: 'call', name: 'Call', isSystem: false },
+  { key: 'meeting', name: 'Meeting', isSystem: false },
+  { key: 'email', name: 'Email', isSystem: false },
+  { key: 'note', name: 'Note', isSystem: false },
+  { key: 'stage_change', name: 'Stage change', isSystem: true },
+] as const;
+export const STAGE_CHANGE_ACTIVITY_TYPE = 'stage_change';
+
+// ── pipelines, opportunities, activities (API) ───────────────────────────────
+
+export const OPPORTUNITY_CURRENCIES = ['RON', 'EUR'] as const;
+
+export interface PipelineStageItem {
+  id: string;
+  name: string;
+  kind: PipelineStageKind;
+  position: number;
+  probability: number | null;
+  active: boolean;
+}
+
+export interface PipelineItem {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  active: boolean;
+  /** Ordered by position. */
+  stages: PipelineStageItem[];
+}
+
+export interface ActivityTypeItem {
+  id: string;
+  key: string;
+  name: string;
+  isSystem: boolean;
+  active: boolean;
+}
+
+const money = z
+  .string()
+  .trim()
+  .regex(/^\d{1,12}(\.\d{1,2})?$/, 'Use an amount like 12500 or 12500.50');
+const isoDate = z.iso.date();
+
+const opportunityFields = {
+  name: z.string().trim().min(1).max(200),
+  contactId: z.uuid().nullable(),
+  ownerMembershipId: z.uuid(),
+  /** Net of VAT (OPD-11). */
+  estimatedValue: money.nullable(),
+  currency: z.enum(OPPORTUNITY_CURRENCIES),
+  expectedCloseDate: isoDate.nullable(),
+  probability: z.number().int().min(0).max(100).nullable(),
+  source: optionalText(200),
+  nextAction: optionalText(500),
+  nextFollowUpDate: isoDate.nullable(),
+};
+
+export const createOpportunityRequestSchema = z.object({
+  organisationId: z.uuid(),
+  name: opportunityFields.name,
+  contactId: opportunityFields.contactId.optional(),
+  /** Defaults to the creator. Drives the OWN scope. */
+  ownerMembershipId: opportunityFields.ownerMembershipId.optional(),
+  estimatedValue: opportunityFields.estimatedValue.optional(),
+  currency: opportunityFields.currency.default('RON'),
+  expectedCloseDate: opportunityFields.expectedCloseDate.optional(),
+  probability: opportunityFields.probability.optional(),
+  source: opportunityFields.source.optional(),
+  nextAction: opportunityFields.nextAction.optional(),
+  nextFollowUpDate: opportunityFields.nextFollowUpDate.optional(),
+  /** Defaults to the tenant's default pipeline; the opportunity starts in its first open stage. */
+  pipelineId: z.uuid().optional(),
+});
+export type CreateOpportunityRequest = z.infer<typeof createOpportunityRequestSchema>;
+
+/** PATCH /opportunities/{id} (If-Match). Stages change only through the actions. */
+export const updateOpportunityRequestSchema = z
+  .object(opportunityFields)
+  .partial()
+  .refine((body) => Object.values(body).some((v) => v !== undefined), 'Nothing to change');
+export type UpdateOpportunityRequest = z.infer<typeof updateOpportunityRequestSchema>;
+
+export const moveStageRequestSchema = z.object({ stageId: z.uuid() });
+/** Missing value or close date can be supplied with the win (they're required to win). */
+export const winOpportunityRequestSchema = z.object({
+  estimatedValue: money.optional(),
+  expectedCloseDate: isoDate.optional(),
+});
+export const loseOpportunityRequestSchema = z.object({ lostReason: z.string().trim().min(3).max(500) });
+export const reopenOpportunityRequestSchema = z.object({
+  reason: z.string().trim().min(3).max(500),
+  /** An OPEN stage of the same pipeline; defaults to the first one. */
+  stageId: z.uuid().optional(),
+});
+
+export const opportunityListQuerySchema = pageQuerySchema.extend({
+  pipelineId: z.uuid().optional(),
+  organisationId: z.uuid().optional(),
+  status: z.enum(['OPEN', 'WON', 'LOST']).optional(),
+  ownerMembershipId: z.uuid().optional(),
+  q: z.string().trim().max(100).optional(),
+});
+export type OpportunityListQuery = z.infer<typeof opportunityListQuerySchema>;
+
+export interface OpportunityListItem {
+  id: string;
+  name: string;
+  organisation: { id: string; displayName: string };
+  contact: { id: string; name: string } | null;
+  owner: { membershipId: string; displayName: string };
+  stage: { id: string; name: string; kind: PipelineStageKind; pipelineId: string };
+  estimatedValue: string | null;
+  currency: (typeof OPPORTUNITY_CURRENCIES)[number];
+  expectedCloseDate: string | null;
+  probability: number | null;
+  nextFollowUpDate: string | null;
+  closedAt: string | null;
+  version: number;
+}
+
+export interface OpportunityDetail extends OpportunityListItem {
+  source: string | null;
+  nextAction: string | null;
+  lostReason: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const createActivityRequestSchema = z.object({
+  organisationId: z.uuid(),
+  contactId: z.uuid().optional(),
+  opportunityId: z.uuid().optional(),
+  activityTypeId: z.uuid(),
+  occurredAt: z.iso.datetime({ offset: true }).optional(),
+  subject: z.string().trim().min(1).max(200),
+  body: z.string().trim().max(10000).optional(),
+});
+export type CreateActivityRequest = z.infer<typeof createActivityRequestSchema>;
+
+export const updateActivityRequestSchema = z
+  .object({
+    activityTypeId: z.uuid(),
+    occurredAt: z.iso.datetime({ offset: true }),
+    subject: z.string().trim().min(1).max(200),
+    body: z.string().trim().max(10000).nullable(),
+  })
+  .partial()
+  .refine((body) => Object.values(body).some((v) => v !== undefined), 'Nothing to change');
+export type UpdateActivityRequest = z.infer<typeof updateActivityRequestSchema>;
+
+export const activityListQuerySchema = pageQuerySchema.extend({
+  organisationId: z.uuid().optional(),
+  opportunityId: z.uuid().optional(),
+  contactId: z.uuid().optional(),
+});
+export type ActivityListQuery = z.infer<typeof activityListQuerySchema>;
+
+export interface ActivityItem {
+  id: string;
+  organisation: { id: string; displayName: string };
+  contact: { id: string; name: string } | null;
+  opportunity: { id: string; name: string } | null;
+  type: { id: string; key: string; name: string; isSystem: boolean };
+  occurredAt: string;
+  subject: string;
+  body: string | null;
+  author: { membershipId: string; displayName: string } | null;
+  version: number;
+}
