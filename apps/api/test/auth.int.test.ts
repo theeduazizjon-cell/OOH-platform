@@ -12,9 +12,10 @@ import {
   membership,
   membershipRole,
   provisionTenant,
+  refreshToken,
   role,
 } from '@ooh/db';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import type { LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { AppModule } from '../src/app.module';
@@ -24,6 +25,7 @@ import { AccessService } from '../src/core/auth/access.service';
 import { THROTTLE_STORE } from '../src/core/auth/login-throttle';
 import { PasswordService } from '../src/core/auth/password.service';
 import { RedisService } from '../src/core/redis/redis.service';
+import { REFRESH_REUSE_GRACE_MS } from '../src/modules/auth/auth.service';
 import { MemoryThrottleStore } from './support';
 
 const PASSWORD = 'correct horse battery staple';
@@ -280,42 +282,6 @@ describe('refresh token rotation', () => {
     expect(response.statusCode).toBe(403);
   });
 
-  it('rotates, and revokes the whole family when a rotated token is replayed', async () => {
-    const { cookie: original } = await session('viewer');
-    const rotated = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/refresh',
-      headers: withCookie(original),
-    });
-    expect(rotated.statusCode).toBe(200);
-    const next = refreshCookie(rotated);
-    expect(next).not.toBe(original);
-    expect(
-      (await app.inject({ method: 'GET', url: '/api/v1/me', headers: bearer(tokenOf(rotated)) })).statusCode,
-    ).toBe(200);
-
-    // An attacker replays the stolen original …
-    const replay = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/refresh',
-      headers: withCookie(original),
-    });
-    expect(replay.statusCode).toBe(401);
-    // … which also kills the legitimate successor.
-    const successor = await app.inject({
-      method: 'POST',
-      url: '/api/v1/auth/refresh',
-      headers: withCookie(next),
-    });
-    expect(successor.statusCode).toBe(401);
-
-    const reuse = await owner.db
-      .select()
-      .from(auditEvent)
-      .where(eq(auditEvent.action, 'auth.refresh_reuse_detected'));
-    expect(reuse.length).toBeGreaterThanOrEqual(1);
-  });
-
   it('logout revokes the session and clears the cookie', async () => {
     const { cookie } = await session('viewer');
     const out = await app.inject({ method: 'POST', url: '/api/v1/auth/logout', headers: withCookie(cookie) });
@@ -327,6 +293,95 @@ describe('refresh token rotation', () => {
       headers: withCookie(cookie),
     });
     expect(after.statusCode).toBe(401);
+  });
+});
+
+describe('refresh token reuse detection and grace window', () => {
+  const refresh = (cookie: string) =>
+    app.inject({ method: 'POST', url: '/api/v1/auth/refresh', headers: withCookie(cookie) });
+  const tokenIdOf = (cookie: string) => cookie.split('.')[1]!;
+  const auditCount = async (action: string, familyId: string) =>
+    (
+      await owner.db
+        .select()
+        .from(auditEvent)
+        .where(and(eq(auditEvent.action, action), sql`${auditEvent.metadata}->>'familyId' = ${familyId}`))
+    ).length;
+  const familyOf = async (cookie: string) =>
+    (
+      await owner.db
+        .select({ familyId: refreshToken.familyId })
+        .from(refreshToken)
+        .where(eq(refreshToken.id, tokenIdOf(cookie)))
+    )[0]!.familyId;
+  /** Simulates time passing: moves the token's rotation `ms` into the past. */
+  const backdateRotation = (cookie: string, ms: number) =>
+    owner.db
+      .update(refreshToken)
+      .set({ rotatedAt: sql`${refreshToken.rotatedAt} - make_interval(secs => ${ms / 1000})` })
+      .where(eq(refreshToken.id, tokenIdOf(cookie)));
+
+  it('re-issues the previous token within the grace window (lost refresh response)', async () => {
+    const { cookie: original } = await session('viewer');
+    const familyId = await familyOf(original);
+    // The browser never stores this response (reload/abort after the server rotated).
+    const lost = await refresh(original);
+    expect(lost.statusCode).toBe(200);
+    const lostCookie = refreshCookie(lost);
+
+    const retried = await refresh(original);
+    expect(retried.statusCode).toBe(200);
+    const current = refreshCookie(retried);
+    expect(current).not.toBe(original);
+    expect(current).not.toBe(lostCookie);
+    expect(await familyOf(current)).toBe(familyId);
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/v1/me', headers: bearer(tokenOf(retried)) })).statusCode,
+    ).toBe(200);
+
+    // The session goes on normally …
+    const after = await refresh(current);
+    expect(after.statusCode).toBe(200);
+    expect(await auditCount('auth.refresh_grace_used', familyId)).toBe(1);
+    expect(await auditCount('auth.refresh_reuse_detected', familyId)).toBe(0);
+
+    // … and the successor the browser never received is dead (presenting it is reuse).
+    expect((await refresh(lostCookie)).statusCode).toBe(401);
+    expect(await auditCount('auth.refresh_reuse_detected', familyId)).toBe(1);
+    expect((await refresh(refreshCookie(after))).statusCode).toBe(401);
+  });
+
+  it('revokes the whole family when the previous token is replayed after the window', async () => {
+    const { cookie: original } = await session('viewer');
+    const familyId = await familyOf(original);
+    const rotated = await refresh(original);
+    expect(rotated.statusCode).toBe(200);
+    const next = refreshCookie(rotated);
+    expect(
+      (await app.inject({ method: 'GET', url: '/api/v1/me', headers: bearer(tokenOf(rotated)) })).statusCode,
+    ).toBe(200);
+    await backdateRotation(original, REFRESH_REUSE_GRACE_MS + 1_000);
+
+    // An attacker replays the stolen original …
+    expect((await refresh(original)).statusCode).toBe(401);
+    // … which also kills the legitimate successor.
+    expect((await refresh(next)).statusCode).toBe(401);
+    expect(await auditCount('auth.refresh_reuse_detected', familyId)).toBeGreaterThanOrEqual(1);
+    expect(await auditCount('auth.refresh_grace_used', familyId)).toBe(0);
+  });
+
+  it('revokes the whole family when a token two rotations old is replayed, even within the window', async () => {
+    const { cookie: first } = await session('viewer');
+    const familyId = await familyOf(first);
+    const second = await refresh(first);
+    expect(second.statusCode).toBe(200);
+    const third = await refresh(refreshCookie(second));
+    expect(third.statusCode).toBe(200);
+
+    expect((await refresh(first)).statusCode).toBe(401);
+    expect(await auditCount('auth.refresh_reuse_detected', familyId)).toBe(1);
+    expect((await refresh(refreshCookie(third))).statusCode).toBe(401);
+    expect(await auditCount('auth.refresh_grace_used', familyId)).toBe(0);
   });
 });
 
