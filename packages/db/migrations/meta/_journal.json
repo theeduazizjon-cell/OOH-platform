@@ -155,6 +155,20 @@
       "when": 1790979339837,
       "tag": "0021_campaigns_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790981731964,
+      "tag": "0022_outbox_dispatch",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1790981753374,
+      "tag": "0023_outbox_claim",
+      "breakpoints": true
     }
   ]
 }

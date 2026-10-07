@@ -28,7 +28,7 @@ import { and, eq } from 'drizzle-orm';
 import type { LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { PasswordService } from '../src/core/auth/password.service';
-import { createTestApp } from './support';
+import { createTestApp, drainOutbox } from './support';
 
 const PASSWORD = 'correct horse battery staple';
 const suffix = Date.now().toString(36);
@@ -324,6 +324,7 @@ describe('opportunity won → "Create brief" task', () => {
       })
     ).json<OpportunityDetail>();
     opp = (await send('sales1', 'POST', `/opportunities/${opp.id}/actions/win`, {}, opp.version)).json();
+    await drainOutbox(app);
 
     const tasks = await list('sales1', `?opportunityId=${opp.id}&state=all`);
     expect(tasks.data).toHaveLength(1);
@@ -351,6 +352,7 @@ describe('opportunity won → "Create brief" task', () => {
       )
     ).json();
     await send('admin', 'POST', `/opportunities/${opp.id}/actions/win`, {}, opp.version);
+    await drainOutbox(app);
     const rows = await owner.db.select({ id: task.id }).from(task).where(eq(task.subjectId, opp.id));
     expect(rows).toHaveLength(1);
   });

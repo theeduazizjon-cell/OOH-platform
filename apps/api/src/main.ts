@@ -4,6 +4,7 @@ import { type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module';
 import { configureApp, createFastifyAdapter } from './bootstrap';
 import { loadEnv } from './config/env';
+import { OutboxDispatcher } from './core/outbox/outbox.dispatcher';
 
 async function bootstrap(): Promise<void> {
   const env = loadEnv();
@@ -15,6 +16,7 @@ async function bootstrap(): Promise<void> {
     },
   );
   await configureApp(app, env);
+  if (env.OUTBOX_DISPATCH_IN_PROCESS) app.get(OutboxDispatcher).start();
   await app.listen(env.API_PORT, '0.0.0.0');
 }
 

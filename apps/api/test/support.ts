@@ -5,6 +5,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp, createFastifyAdapter } from '../src/bootstrap';
 import { loadEnv } from '../src/config/env';
 import { THROTTLE_STORE, type ThrottleStore } from '../src/core/auth/login-throttle';
+import { OutboxDispatcher } from '../src/core/outbox/outbox.dispatcher';
 import { RedisService } from '../src/core/redis/redis.service';
 
 /** In-memory ThrottleStore for tests (no Redis). */
@@ -50,4 +51,16 @@ export async function createTestApp(
   await app.init();
   await app.getHttpAdapter().getInstance().ready();
   return app;
+}
+
+/** Runs the outbox dispatcher until nothing is due (what the worker does in production). */
+export async function drainOutbox(app: { get: NestFastifyApplication['get'] }): Promise<number> {
+  const dispatcher = app.get(OutboxDispatcher);
+  let total = 0;
+  for (let pass = 0; pass < 20; pass++) {
+    const processed = await dispatcher.runOnce();
+    total += processed;
+    if (processed === 0) break;
+  }
+  return total;
 }

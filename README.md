@@ -46,7 +46,8 @@ Sign in at http://localhost:5173 with `admin@demo.local` / `demo-password-change
 
 | Command                                        | What it does                                                                                |
 | ---------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `pnpm dev`                                     | Watch mode for all packages and the API                                                     |
+| `pnpm dev`                                     | Watch mode for all packages and the API (which also dispatches the outbox in development)   |
+| `pnpm --filter @ooh/api start:worker`          | The worker process (outbox dispatcher) for a built API, as in production                    |
 | `pnpm lint` / `pnpm typecheck` / `pnpm format` | Static checks                                                                               |
 | `pnpm test`                                    | Unit and HTTP tests (no infrastructure needed)                                              |
 | `pnpm test:int`                                | Database integration tests incl. **tenant-isolation** suite (Docker or `TEST_DATABASE_URL`) |

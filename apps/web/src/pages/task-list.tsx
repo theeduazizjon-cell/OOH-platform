@@ -26,6 +26,7 @@ export interface TaskFilter {
   assignee?: 'me' | 'unassigned';
   organisationId?: string;
   opportunityId?: string;
+  campaignId?: string;
 }
 
 /** The task list query string for a filter (shared by the list and the 360° summary). */
@@ -34,6 +35,7 @@ export function taskQuery(filter: TaskFilter, limit = 100): string {
   if (filter.assignee) params.set('assignee', filter.assignee);
   if (filter.organisationId) params.set('organisationId', filter.organisationId);
   if (filter.opportunityId) params.set('opportunityId', filter.opportunityId);
+  if (filter.campaignId) params.set('campaignId', filter.campaignId);
   return params.toString();
 }
 
@@ -230,7 +232,21 @@ function TaskRow({
           )}
           {t.dueAt && ' · '}
           {t.assignee ? t.assignee.displayName : 'Unassigned'}
-          {showSubject && t.organisation && (
+          {showSubject && t.campaign && (
+            <>
+              {' · '}
+              <Link
+                to="/app/campaigns/$campaignId"
+                params={{ campaignId: t.campaign.id }}
+                className="text-brand-700 hover:underline"
+              >
+                {t.subject?.type === 'campaign_location'
+                  ? `${t.subject.name} (${t.campaign.code})`
+                  : `${t.campaign.code} · ${t.campaign.name}`}
+              </Link>
+            </>
+          )}
+          {showSubject && !t.campaign && t.organisation && (
             <>
               {' · '}
               <Link

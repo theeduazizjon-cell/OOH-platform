@@ -12,6 +12,8 @@ import type {
 } from '@ooh/contracts';
 import {
   appUser,
+  campaign,
+  campaignLocation,
   membership,
   membershipRole,
   opportunity,
@@ -23,6 +25,7 @@ import {
 } from '@ooh/db';
 import { and, asc, eq, inArray, isNull, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import { type Actor } from '../../core/audit/actor';
 import { AuditService } from '../../core/audit/audit.service';
 import { type Principal } from '../../core/auth/principal';
 import { DatabaseService } from '../../core/database/database.service';
@@ -55,9 +58,12 @@ export interface SystemTask {
   title: string;
   notes?: string;
   organisationId: string;
+  campaignId?: string;
   subject: { type: TaskSubjectType; id: string };
   assigneeMembershipId: string | null;
-  dueAt?: Date;
+  dueAt?: Date | null;
+  /** The person whose action led to the task (e.g. who won the deal), if any. */
+  createdByMembershipId?: string | null;
 }
 
 /**
@@ -92,6 +98,7 @@ export class TasksService {
           query.opportunityId
             ? and(eq(task.subjectType, 'opportunity'), eq(task.subjectId, query.opportunityId))
             : undefined,
+          query.campaignId ? eq(task.campaignId, query.campaignId) : undefined,
           after ? sql`(${SORT}, ${task.id}) > (${after.sortKey}::timestamptz, ${after.id}::uuid)` : undefined,
         ),
         query.limit + 1,
@@ -256,32 +263,28 @@ export class TasksService {
    * A platform task inside the caller's transaction, at most once per dedupe key (a re-won
    * opportunity doesn't get a second "Create brief"). Returns the new task id, or null if it existed.
    */
-  async createSystemTask(
-    tx: Transaction,
-    principal: Principal,
-    client: ClientInfo,
-    input: SystemTask,
-  ): Promise<string | null> {
+  async createSystemTask(tx: Transaction, by: Actor, input: SystemTask): Promise<string | null> {
     const [created] = await tx
       .insert(task)
       .values({
-        tenantId: principal.tenantId,
+        tenantId: by.tenantId,
         title: input.title,
         notes: input.notes ?? null,
         source: 'SYSTEM',
         dedupeKey: input.dedupeKey,
         organisationId: input.organisationId,
+        campaignId: input.campaignId ?? null,
         subjectType: input.subject.type,
         subjectId: input.subject.id,
         assigneeMembershipId: input.assigneeMembershipId,
         dueAt: input.dueAt ?? null,
-        createdByMembershipId: principal.membershipId,
+        createdByMembershipId: input.createdByMembershipId ?? by.actorMembershipId,
       })
       .onConflictDoNothing({ target: [task.tenantId, task.dedupeKey], where: sql`dedupe_key IS NOT NULL` })
       .returning({ id: task.id });
     if (!created) return null;
     await this.audit.record(tx, {
-      ...actor(principal, client),
+      ...by,
       action: 'task.created',
       subjectType: 'task',
       subjectId: created.id,
@@ -294,12 +297,7 @@ export class TasksService {
    * Completes the platform task with this dedupe key when it is still open (e.g. "Create brief" once
    * the brief exists). Returns whether a task was completed.
    */
-  async completeSystemTask(
-    tx: Transaction,
-    principal: Principal,
-    client: ClientInfo,
-    dedupeKey: string,
-  ): Promise<boolean> {
+  async completeSystemTask(tx: Transaction, by: Actor, dedupeKey: string): Promise<boolean> {
     const [done] = await tx
       .update(task)
       .set({ status: 'DONE', completedAt: new Date(), version: sql`${task.version} + 1` })
@@ -307,7 +305,7 @@ export class TasksService {
       .returning({ id: task.id, status: task.status });
     if (!done) return false;
     await this.audit.record(tx, {
-      ...actor(principal, client),
+      ...by,
       action: 'task.completed',
       subjectType: 'task',
       subjectId: done.id,
@@ -413,6 +411,9 @@ export class TasksService {
         creatorName: creatorUser.displayName,
         organisationName: organisation.displayName,
         opportunityName: opportunity.name,
+        campaignCode: campaign.code,
+        campaignName: campaign.name,
+        locationName: campaignLocation.name,
       })
       .from(task)
       .leftJoin(assigneeMember, eq(assigneeMember.id, task.assigneeMembershipId))
@@ -421,6 +422,11 @@ export class TasksService {
       .leftJoin(creatorUser, eq(creatorUser.id, creatorMember.userId))
       .leftJoin(organisation, eq(organisation.id, task.organisationId))
       .leftJoin(opportunity, and(eq(task.subjectType, 'opportunity'), eq(opportunity.id, task.subjectId)))
+      .leftJoin(campaign, eq(campaign.id, task.campaignId))
+      .leftJoin(
+        campaignLocation,
+        and(eq(task.subjectType, 'campaign_location'), eq(campaignLocation.id, task.subjectId)),
+      )
       .where(where)
       .orderBy(asc(SORT), asc(task.id))
       .limit(limit);
@@ -442,12 +448,22 @@ export class TasksService {
           r.task.organisationId && r.organisationName
             ? { id: r.task.organisationId, displayName: r.organisationName }
             : null,
+        campaign:
+          r.task.campaignId && r.campaignCode && r.campaignName
+            ? { id: r.task.campaignId, code: r.campaignCode, name: r.campaignName }
+            : null,
         subject:
           r.task.subjectType && r.task.subjectId
             ? {
                 type: r.task.subjectType as TaskSubjectType,
                 id: r.task.subjectId,
-                name: (r.task.subjectType === 'opportunity' ? r.opportunityName : r.organisationName) ?? '',
+                name:
+                  {
+                    opportunity: r.opportunityName,
+                    organisation: r.organisationName,
+                    campaign: r.campaignName,
+                    campaign_location: r.locationName,
+                  }[r.task.subjectType as TaskSubjectType] ?? '',
               }
             : null,
         createdBy: r.task.createdByMembershipId

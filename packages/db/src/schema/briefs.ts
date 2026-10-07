@@ -356,11 +356,17 @@ export const outboxEvent = pgTable(
     dispatchedAt: timestamp('dispatched_at', { withTimezone: true }),
     attempts: integer('attempts').notNull().default(0),
     lastError: text('last_error'),
+    /** Leased by a worker until then (another worker may take it over afterwards). */
+    lockedUntil: timestamp('locked_until', { withTimezone: true }),
+    /** Retries back off; the dispatcher only claims events whose time has come. */
+    nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Given up after too many attempts (kept for inspection and replay). */
+    failedAt: timestamp('failed_at', { withTimezone: true }),
   },
   (t) => [
     unique('outbox_event_tenant_id_id_uq').on(t.tenantId, t.id),
     index('outbox_event_pending_idx')
-      .on(t.occurredAt)
-      .where(sql`${t.dispatchedAt} IS NULL`),
+      .on(t.nextAttemptAt, t.occurredAt)
+      .where(sql`${t.dispatchedAt} IS NULL AND ${t.failedAt} IS NULL`),
   ],
 );

@@ -24,6 +24,7 @@ import {
   progressSummary,
 } from './campaign-status';
 import { LocationForm, type LocationFormValues } from './location-form';
+import { TaskList } from './task-list';
 
 export const CAMPAIGN_CONFLICT_MESSAGE =
   'Someone else changed this in the meantime. The campaign has been reloaded; check it and try again.';
@@ -220,6 +221,16 @@ export function CampaignPage({ campaignId }: { campaignId: string }) {
         />
       )}
       {c.notes && <Card className="p-3 text-sm whitespace-pre-line text-slate-700">{c.notes}</Card>}
+
+      <Card className="p-4">
+        <TaskList
+          title="Tasks"
+          filter={{ campaignId: c.id }}
+          canAdd={false}
+          showSubject={false}
+          emptyText="No open tasks."
+        />
+      </Card>
 
       <Card className="p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
