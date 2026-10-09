@@ -4,6 +4,7 @@ export * from './campaigns';
 export * from './concurrency';
 export * from './crm';
 export * from './errors';
+export * from './files';
 export * from './inventory';
 export * from './invitations';
 export * from './pagination';

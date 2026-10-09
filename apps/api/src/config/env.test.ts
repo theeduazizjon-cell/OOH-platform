@@ -6,15 +6,33 @@ const valid = {
   REDIS_URL: 'redis://localhost:6379',
   JWT_SECRET: 'test-secret-test-secret-test-secret-123',
 };
+const productionFiles = {
+  FILE_STORAGE: 's3',
+  S3_BUCKET: 'ooh-files',
+  S3_ACCESS_KEY_ID: 'key',
+  S3_SECRET_ACCESS_KEY: 'secret',
+  FILE_SCANNER: 'clamav',
+};
 
 describe('loadEnv', () => {
   it('derives secure cookies from NODE_ENV and forbids insecure cookies in production', () => {
     expect(loadEnv({ ...valid }).COOKIE_SECURE).toBe(false);
-    expect(loadEnv({ ...valid, NODE_ENV: 'production' }).COOKIE_SECURE).toBe(true);
+    expect(loadEnv({ ...valid, ...productionFiles, NODE_ENV: 'production' }).COOKIE_SECURE).toBe(true);
     expect(loadEnv({ ...valid, COOKIE_SECURE: 'true' }).COOKIE_SECURE).toBe(true);
-    expect(() => loadEnv({ ...valid, NODE_ENV: 'production', COOKIE_SECURE: 'false' })).toThrow(
-      InvalidEnvironmentError,
+    expect(() =>
+      loadEnv({ ...valid, ...productionFiles, NODE_ENV: 'production', COOKIE_SECURE: 'false' }),
+    ).toThrow(InvalidEnvironmentError);
+  });
+
+  it('files: local disk and no scanner in development only; S3 needs its bucket and keys', () => {
+    expect(loadEnv({ ...valid })).toMatchObject({ FILE_STORAGE: 'local', FILE_SCANNER: 'none' });
+    expect(() => loadEnv({ ...valid, NODE_ENV: 'production' })).toThrow(
+      /FILE_STORAGE=s3 and FILE_SCANNER=clamav/,
     );
+    expect(() =>
+      loadEnv({ ...valid, ...productionFiles, NODE_ENV: 'production', FILE_SCANNER: 'none' }),
+    ).toThrow(InvalidEnvironmentError);
+    expect(() => loadEnv({ ...valid, FILE_STORAGE: 's3' })).toThrow(/S3_BUCKET/);
   });
 
   it('rejects a short JWT secret', () => {
