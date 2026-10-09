@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { pageQuerySchema } from './pagination';
 import {
   CAMPAIGN_STATUSES,
+  type GeocodeStatus,
   type CampaignAction,
   type CampaignStatus,
   type LocationAction,
@@ -11,8 +12,8 @@ import {
 /**
  * Campaigns and their locations (docs/architecture/05-domain-model.md §briefs & campaigns,
  * 04-user-flows.md A5). A campaign is an umbrella: its dates and progress derive from its
- * locations, where the operational work happens. The store pin (geography) arrives with
- * geocoding (M3c).
+ * locations, where the operational work happens. Each location has a store pin (geocoded, then
+ * confirmed by a person) before research starts.
  */
 
 export interface LocationItem {
@@ -33,6 +34,13 @@ export interface LocationItem {
   cancelReason: string | null;
   researchRadiusM: number | null;
   briefLineId: string | null;
+  /** The store's position (WGS84); set by geocoding, then confirmed or moved by a person. */
+  storePoint: { lat: number; lng: number } | null;
+  geocodeStatus: GeocodeStatus;
+  /** What the geocoder understood the address to be (to compare with the brief's text). */
+  geocodedAddress: string | null;
+  geocodeError: string | null;
+  pinConfirmedAt: string | null;
   version: number;
   actions: LocationAction[];
 }
@@ -154,6 +162,15 @@ export const convertBriefRequestSchema = z
     path: ['campaignName'],
   });
 export type ConvertBriefRequest = z.infer<typeof convertBriefRequestSchema>;
+
+/** PUT /locations/{id}/store-point (If-Match): a person places or accepts the pin. */
+export const storePointRequestSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  /** The geocoder's place, when the person accepted its suggestion as is. */
+  placeId: z.string().trim().max(300).optional(),
+});
+export type StorePointRequest = z.infer<typeof storePointRequestSchema>;
 
 export const campaignListQuerySchema = pageQuerySchema.extend({
   status: z.enum(CAMPAIGN_STATUSES).optional(),

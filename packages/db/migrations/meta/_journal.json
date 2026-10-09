@@ -169,6 +169,13 @@
       "when": 1790981753374,
       "tag": "0023_outbox_claim",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791547783668,
+      "tag": "0024_store_pin",
+      "breakpoints": true
     }
   ]
 }

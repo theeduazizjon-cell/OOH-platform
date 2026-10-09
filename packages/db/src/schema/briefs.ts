@@ -21,7 +21,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { actorType } from './audit';
-import { primaryId, tenantIdColumn, timestamps, versionColumn } from './columns';
+import { geographyPoint, primaryId, tenantIdColumn, timestamps, versionColumn } from './columns';
 import { opportunity, organisation } from './crm';
 import { membership, tenant } from './identity';
 
@@ -160,6 +160,14 @@ export const briefLine = pgTable(
   ],
 );
 
+export const geocodeStatus = pgEnum('geocode_status', [
+  'PENDING',
+  'RESOLVED',
+  'AMBIGUOUS',
+  'FAILED',
+  'CONFIRMED',
+]);
+
 export const campaignStatus = pgEnum('campaign_status', ['ACTIVE', 'ON_HOLD', 'COMPLETED', 'CANCELLED']);
 export const locationStatus = pgEnum('location_status', [
   'DRAFT',
@@ -267,6 +275,15 @@ export const campaignLocation = pgTable(
     holdReason: text('hold_reason'),
     cancelReason: text('cancel_reason'),
     researchRadiusM: integer('research_radius_m'),
+    /** The store (WGS84). Geocoded, then confirmed or moved by a person (04-user-flows.md A6–A7). */
+    storePoint: geographyPoint('store_point'),
+    geocodeStatus: geocodeStatus('geocode_status').notNull().default('PENDING'),
+    /** Provider place reference (kept, unlike provider content, per OPD-19). */
+    placeId: text('place_id'),
+    geocodedAddress: text('geocoded_address'),
+    geocodeError: text('geocode_error'),
+    pinConfirmedByMembershipId: uuid('pin_confirmed_by_membership_id'),
+    pinConfirmedAt: timestamp('pin_confirmed_at', { withTimezone: true }),
     liveAt: timestamp('live_at', { withTimezone: true }),
     completedAt: timestamp('completed_at', { withTimezone: true }),
     ...timestamps(),
@@ -289,7 +306,13 @@ export const campaignLocation = pgTable(
       columns: [t.tenantId, t.buyerMembershipId],
       foreignColumns: [membership.tenantId, membership.id],
     }),
+    foreignKey({
+      name: 'campaign_location_pin_confirmed_by_fk',
+      columns: [t.tenantId, t.pinConfirmedByMembershipId],
+      foreignColumns: [membership.tenantId, membership.id],
+    }),
     index('campaign_location_campaign_idx').on(t.tenantId, t.campaignId),
+    index('campaign_location_store_point_idx').using('gist', t.storePoint),
     index('campaign_location_status_idx').on(t.tenantId, t.status),
     check('campaign_location_name_ck', sql`length(btrim(${t.name})) > 0`),
     check('campaign_location_units_ck', sql`${t.requestedUnits} IS NULL OR ${t.requestedUnits} > 0`),
@@ -305,6 +328,20 @@ export const campaignLocation = pgTable(
     check(
       'campaign_location_hold_ck',
       sql`(${t.status} = 'ON_HOLD') = (${t.previousStatus} IS NOT NULL) AND (${t.previousStatus} IS NULL OR ${t.previousStatus} NOT IN ('ON_HOLD', 'COMPLETED', 'CANCELLED'))`,
+    ),
+    // A pin exists exactly when geocoding found one or a person placed it.
+    check(
+      'campaign_location_pin_ck',
+      sql`(${t.geocodeStatus} IN ('RESOLVED', 'CONFIRMED')) = (${t.storePoint} IS NOT NULL)`,
+    ),
+    check(
+      'campaign_location_pin_confirmed_ck',
+      sql`(${t.geocodeStatus} = 'CONFIRMED') = (${t.pinConfirmedAt} IS NOT NULL)`,
+    ),
+    // Research and everything after it need a confirmed store pin (06-state-machines.md §5).
+    check(
+      'campaign_location_research_needs_pin_ck',
+      sql`${t.status} IN ('DRAFT', 'CANCELLED', 'ON_HOLD') OR ${t.geocodeStatus} = 'CONFIRMED'`,
     ),
     check(
       'campaign_location_cancelled_ck',

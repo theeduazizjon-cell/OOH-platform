@@ -5,6 +5,7 @@ import { AppModule } from '../src/app.module';
 import { configureApp, createFastifyAdapter } from '../src/bootstrap';
 import { loadEnv } from '../src/config/env';
 import { THROTTLE_STORE, type ThrottleStore } from '../src/core/auth/login-throttle';
+import { GEO_PROVIDER, type GeocodeResult, type GeoProvider } from '../src/core/geo/geo-provider';
 import { OutboxDispatcher } from '../src/core/outbox/outbox.dispatcher';
 import { RedisService } from '../src/core/redis/redis.service';
 
@@ -28,9 +29,57 @@ export class MemoryThrottleStore implements ThrottleStore {
   }
 }
 
+/**
+ * Deterministic geocoding for tests, by city: Sinaia resolves (one precise match), Brașov is
+ * ambiguous (two stores), "Down" throws (transient outage), anything else is not found. Records queries.
+ */
+export class FakeGeoProvider implements GeoProvider {
+  readonly queries: string[] = [];
+
+  geocode(query: string): Promise<GeocodeResult> {
+    this.queries.push(query);
+    if (query.includes('Down')) return Promise.reject(new Error('provider unavailable'));
+    if (query.includes('Sinaia')) {
+      return Promise.resolve({
+        kind: 'resolved',
+        candidate: {
+          lat: 45.3486,
+          lng: 25.5517,
+          placeId: 'fake-sinaia',
+          formattedAddress: 'Bd. Carol I 25, Sinaia',
+          precise: true,
+        },
+      });
+    }
+    if (query.includes('Brașov')) {
+      return Promise.resolve({
+        kind: 'ambiguous',
+        candidates: [
+          {
+            lat: 45.6427,
+            lng: 25.5887,
+            placeId: 'fake-b1',
+            formattedAddress: 'Carrefour Coresi, Brașov',
+            precise: true,
+          },
+          {
+            lat: 45.6579,
+            lng: 25.6012,
+            placeId: 'fake-b2',
+            formattedAddress: 'Carrefour Brașov Centru',
+            precise: true,
+          },
+        ],
+      });
+    }
+    return Promise.resolve({ kind: 'failed', reason: 'The address was not found.' });
+  }
+}
+
 /** The full API (real HTTP pipeline, runtime DB role) with Redis replaced by in-memory fakes. */
 export async function createTestApp(
   throttleStore: ThrottleStore = new MemoryThrottleStore(),
+  geo: GeoProvider = new FakeGeoProvider(),
 ): Promise<NestFastifyApplication> {
   const env = loadEnv({
     NODE_ENV: 'test',
@@ -45,6 +94,8 @@ export async function createTestApp(
     .useValue(throttleStore)
     .overrideProvider(RedisService)
     .useValue({ onApplicationShutdown: () => Promise.resolve() })
+    .overrideProvider(GEO_PROVIDER)
+    .useValue(geo)
     .compile();
   const app = moduleRef.createNestApplication<NestFastifyApplication>(createFastifyAdapter(env));
   await configureApp(app, env);

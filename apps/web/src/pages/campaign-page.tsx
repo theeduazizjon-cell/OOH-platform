@@ -34,14 +34,23 @@ const CAMPAIGN_LABELS: Record<CampaignAction, string> = {
   resume: 'Resume',
   cancel: 'Cancel campaign',
 };
-const PAST: Record<CampaignAction, string> = { hold: 'on hold', resume: 'resumed', cancel: 'cancelled' };
-const LOCATION_LABELS: Record<LocationAction, string> = { hold: 'Hold', resume: 'Resume', cancel: 'Cancel' };
+const PAST: Record<LocationAction, string> = {
+  'start-research': 'research started',
+  hold: 'on hold',
+  resume: 'resumed',
+  cancel: 'cancelled',
+};
+const LOCATION_LABELS: Record<LocationAction, string> = {
+  'start-research': 'Start research',
+  hold: 'Hold',
+  resume: 'Resume',
+  cancel: 'Cancel',
+};
 
 /** Which actions need a reason before they run (06-state-machines.md §4–§5). */
 export function reasonRequired(
   kind: 'campaign' | 'location',
-  // Campaign and location actions share their names.
-  action: CampaignAction,
+  action: LocationAction, // a superset of the campaign actions
 ): boolean {
   return action === 'cancel' || (kind === 'location' && action === 'hold');
 }

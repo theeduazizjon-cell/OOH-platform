@@ -16,9 +16,9 @@ const IDLE_POLL_MS = 1000;
 
 /**
  * The outbox dispatcher (08-system-architecture.md): leases pending events across tenants through
- * `outbox_claim` (migration 0023), then runs each event's handlers in its tenant's transaction and
- * marks it dispatched in that same transaction, so a handler's writes and the "done" mark commit
- * together. Runs in the worker process only (src/worker.ts); the API just writes events.
+ * `outbox_claim` (migration 0023), runs each handler's optional `prepare` (network calls, outside
+ * any transaction), then all handlers' writes in its tenant's transaction, marking the event
+ * dispatched in that same transaction, so the writes and the "done" mark commit together. Runs in the worker process only (src/worker.ts); the API just writes events.
  */
 @Injectable()
 export class OutboxDispatcher implements OnApplicationShutdown {
@@ -87,8 +87,13 @@ export class OutboxDispatcher implements OnApplicationShutdown {
   private async handle(event: OutboxMessage): Promise<void> {
     const context = { tenantId: event.tenantId, actorUserId: null };
     try {
+      const handlers = this.handlers.for(event.eventType);
+      // Phase 1, outside any transaction (network calls); phase 2, all writes in one tenant transaction.
+      const prepared: unknown[] = [];
+      for (const handler of handlers)
+        prepared.push(handler.prepare ? await handler.prepare(event) : undefined);
       await this.database.withTenant(context, async (tx) => {
-        for (const handler of this.handlers.for(event.eventType)) await handler.handle(tx, event);
+        for (const [i, handler] of handlers.entries()) await handler.handle(tx, event, prepared[i]);
         await tx
           .update(outboxEvent)
           .set({ dispatchedAt: sql`now()`, lockedUntil: null })

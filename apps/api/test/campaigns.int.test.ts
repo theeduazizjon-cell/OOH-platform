@@ -334,7 +334,16 @@ describe('campaigns', () => {
       (await convert('buyer', b)).json<BriefDetail>().convertedCampaign!.id,
     );
     const live = c.locationItems[0]!;
-    await owner.db.update(campaignLocation).set({ status: 'LIVE' }).where(eq(campaignLocation.id, live.id));
+    // Live needs a confirmed pin (DB rule); pretend this one got that far.
+    await owner.db
+      .update(campaignLocation)
+      .set({
+        status: 'LIVE',
+        geocodeStatus: 'CONFIRMED',
+        storePoint: 'SRID=4326;POINT(21.3 46.2)',
+        pinConfirmedAt: new Date(),
+      })
+      .where(eq(campaignLocation.id, live.id));
     const blocked = await send(
       'buyer',
       'POST',

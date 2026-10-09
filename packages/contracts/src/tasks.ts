@@ -18,6 +18,8 @@ export type TaskSubjectType = (typeof TASK_SUBJECT_TYPES)[number];
 export const wonOpportunityTaskKey = (opportunityId: string) => `opportunity.won:${opportunityId}`;
 /** Dedupe key of a new location's research task (04-user-flows.md A5). */
 export const locationResearchTaskKey = (locationId: string) => `campaign_location.research:${locationId}`;
+/** Dedupe key of "Confirm store pin" when geocoding is ambiguous or fails (04-user-flows.md A6). */
+export const locationPinTaskKey = (locationId: string) => `campaign_location.pin:${locationId}`;
 
 export interface TaskItem {
   id: string;

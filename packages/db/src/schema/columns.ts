@@ -26,3 +26,11 @@ export const timestamps = () => ({
 export const versionColumn = () => integer('version').notNull().default(1);
 
 export const archivedAt = () => timestamp('archived_at', { withTimezone: true });
+
+/**
+ * A WGS84 point as PostGIS `geography(Point, 4326)`. Write with `pointValue(lat, lng)` and read
+ * coordinates with `ST_Y/ST_X(col::geometry)`; the raw driver value (EWKB hex) is not used.
+ */
+export const geographyPoint = customType<{ data: string; driverData: string }>({
+  dataType: () => 'geography(Point,4326)',
+});

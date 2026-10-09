@@ -36,6 +36,8 @@ export const envSchema = z.object({
    * separate worker. Production runs `dist/worker.js` instead (refused there).
    */
   OUTBOX_DISPATCH_IN_PROCESS: z.stringbool().default(false),
+  /** Google Geocoding (server key, IP-restricted). Unset: store pins are placed by hand. */
+  GOOGLE_MAPS_SERVER_KEY: z.string().min(20).optional(),
 });
 
 export type Env = z.infer<typeof envSchema> & { COOKIE_SECURE: boolean };

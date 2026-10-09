@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseInterceptors,
@@ -22,6 +23,7 @@ import {
   locationHoldRequestSchema,
   type LocationItem,
   type Page,
+  storePointRequestSchema,
   updateCampaignRequestSchema,
   updateLocationRequestSchema,
 } from '@ooh/contracts';
@@ -179,6 +181,45 @@ export class LocationsController {
       principal,
       id,
       parseWith(updateLocationRequestSchema, body),
+      ifMatch,
+      clientInfo(request),
+    );
+  }
+
+  /** A person places or accepts the store pin (04-user-flows.md A7). */
+  @Put(':id/store-point')
+  @RequirePermission('campaign_location.manage')
+  storePoint(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() body: unknown,
+    @IfMatchHeader() ifMatch: IfMatch,
+    @Req() request: FastifyRequest,
+  ): Promise<LocationItem> {
+    return this.campaigns.setStorePoint(
+      principal,
+      id,
+      parseWith(storePointRequestSchema, body),
+      ifMatch,
+      clientInfo(request),
+    );
+  }
+
+  /** DRAFT → RESEARCH; needs a confirmed store pin. */
+  @Post(':id/actions/start-research')
+  @HttpCode(200)
+  @RequirePermission('campaign_location.manage')
+  startResearch(
+    @CurrentPrincipal() principal: Principal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @IfMatchHeader() ifMatch: IfMatch,
+    @Req() request: FastifyRequest,
+  ): Promise<LocationItem> {
+    return this.campaigns.transitionLocation(
+      principal,
+      id,
+      'start-research',
+      {},
       ifMatch,
       clientInfo(request),
     );
