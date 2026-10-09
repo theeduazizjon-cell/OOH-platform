@@ -7,6 +7,7 @@ import { AuthCoreModule } from './core/auth/auth-core.module';
 import { DatabaseModule } from './core/database/database.module';
 import { REQUEST_ID_HEADER } from './core/http/request-id';
 import { RedisModule } from './core/redis/redis.module';
+import { GeoModule } from './core/geo/geo.module';
 import { OutboxModule } from './core/outbox/outbox.module';
 import { StateModule } from './core/state/state.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -46,6 +47,7 @@ export class AppModule {
         AuditModule,
         StateModule,
         OutboxModule,
+        GeoModule,
         AuthCoreModule,
         HealthModule,
         AuthModule,

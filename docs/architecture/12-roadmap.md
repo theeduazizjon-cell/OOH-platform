@@ -27,7 +27,8 @@ Follows the roadmap's sequence [R§51] with **three justified adjustments**:
 | M3b.1 Campaigns + locations (hold/resume/cancel, cascade), brief → campaign convert (new or existing, OPD-07b), portal ORGANISATION scope: API                            | ✅ done 2026-10-03 (branch `feat/m3-campaigns`)                     |
 | M3b.2 Campaigns list, campaign page (locations, hold/resume/cancel with reasons, add/edit locations), convert dialog (new or existing), Company 360° campaigns: web       | ✅ done 2026-10-03 (branch `feat/m3-campaigns-ui`)                  |
 | M3c.1 Outbox worker (cross-tenant claim, per-tenant atomic handlers, retry/backoff/park), event-driven tasks ("Create brief" on won, "Research {store}" per new location) | ✅ done 2026-10-07 (branch `feat/m3-outbox-worker`)                 |
-| M3c.2 Store pin `geography(Point)`, geocoding job (BullMQ), "Confirm store pin" task, start-research guard — needs real PostGIS locally                                   | next                                                                |
+| M3c.2 Store pin `geography(Point)` + geocoding (outbox prepare phase, Google provider), "Confirm store pin" task, `PUT store-point`, `start-research` guard (API + DB)    | ✅ done 2026-10-09 (branch `feat/m3-store-pin`)                     |
+| M3d Pin confirmation UI, campaign/location screens for pins: web                                                                                                          | next                                                                |
 | M3d Campaign screens, store pin confirmation                                                                                                                              | planned                                                             |
 
 Sizing assumes 1–2 developers; each milestone ends with a demo on the Carrefour Sinaia scenario and passing tests.

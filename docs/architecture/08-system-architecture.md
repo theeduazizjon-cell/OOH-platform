@@ -27,8 +27,11 @@
 of **all** tenants with `FOR UPDATE SKIP LOCKED`, since the runtime role only sees one tenant. Each event's handlers
 then run in **that tenant's** RLS transaction, and the event is marked dispatched in the same transaction, so an
 event's effects and its "done" mark commit together (handlers must be idempotent: dedupe keys). Failures retry with
-exponential backoff (5 s … 1 h) and are parked (`failed_at`) after 10 attempts. The dispatcher needs only PostgreSQL;
-BullMQ joins for scheduled scans and rate-limited jobs (geocoding, email). In development the API can dispatch
+exponential backoff (5 s … 1 h) and are parked (`failed_at`) after 10 attempts. The dispatcher needs only PostgreSQL. Handlers may
+declare a `prepare` phase that runs **outside** the transaction (network calls) before `handle` writes; store
+geocoding works this way (`GeoProvider`: Google with `GOOGLE_MAPS_SERVER_KEY`, else "not configured", so pins are
+placed by hand), and a stale result (address changed meanwhile) is dropped. BullMQ joins for scheduled scans and
+high-volume, rate-limited jobs (email, media). In development the API can dispatch
 in-process (`OUTBOX_DISPATCH_IN_PROCESS=true`, refused in production).
 
 **Why not microservices**: one team, one tightly-connected domain (a client approval touches research, inventory,

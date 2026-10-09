@@ -614,6 +614,21 @@ describe('campaign and location', () => {
     await expectPgError(add({ previousStatus: 'DRAFT' }), '23514'); // only while on hold
     await expectPgError(add({ status: 'ON_HOLD', previousStatus: 'CANCELLED' }), '23514');
     await add({ status: 'ON_HOLD', previousStatus: 'RESEARCH', holdReason: 'Client paused' });
+    // Store pins: a point exactly when resolved or confirmed; confirmed needs its timestamp;
+    // research and later need a confirmed pin.
+    await expectPgError(add({ geocodeStatus: 'RESOLVED' }), '23514');
+    await expectPgError(add({ storePoint: 'SRID=4326;POINT(25.55 45.35)' }), '23514');
+    await expectPgError(
+      add({ geocodeStatus: 'CONFIRMED', storePoint: 'SRID=4326;POINT(25.55 45.35)' }),
+      '23514',
+    );
+    await expectPgError(add({ status: 'RESEARCH' }), '23514');
+    await add({
+      status: 'RESEARCH',
+      geocodeStatus: 'CONFIRMED',
+      storePoint: 'SRID=4326;POINT(25.55 45.35)',
+      pinConfirmedAt: new Date(),
+    });
     await expectPgError(add({ status: 'CANCELLED' }), '23514'); // needs a reason
     await expectPgError(add({ researchRadiusM: 10 }), '23514');
     await expectPgError(

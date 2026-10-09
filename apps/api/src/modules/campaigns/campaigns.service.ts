@@ -13,7 +13,9 @@ import {
   locationCancellable,
   type LocationItem,
   type LocationStatus,
+  locationPinTaskKey,
   type Page,
+  type StorePointRequest,
   type PermissionKey,
   TERMINAL_LOCATION_STATUSES,
   type UpdateCampaignRequest,
@@ -37,7 +39,11 @@ import { AppError } from '../../core/http/app-error';
 import { type ClientInfo } from '../../core/http/client-info';
 import { assertIfMatch, type IfMatch } from '../../core/http/concurrency';
 import { decodeIdCursor, encodeIdCursor } from '../../core/http/cursor';
+import { geocodeQuery } from '../../core/geo/geo-provider';
+import { OutboxService } from '../../core/state/outbox.service';
 import { TransitionsService } from '../../core/state/transitions.service';
+import { userActor } from '../../core/audit/actor';
+import { TasksService } from '../tasks/tasks.service';
 
 type CampaignRow = typeof campaign.$inferSelect;
 type LocationRow = typeof campaignLocation.$inferSelect;
@@ -68,6 +74,8 @@ export class CampaignsService {
     private readonly database: DatabaseService,
     private readonly audit: AuditService,
     private readonly transitions: TransitionsService,
+    private readonly outbox: OutboxService,
+    private readonly tasks: TasksService,
   ) {}
 
   // ── campaigns ──────────────────────────────────────────────────────────────
@@ -302,8 +310,15 @@ export class CampaignsService {
       to: 'DRAFT',
       action: 'create',
       event: 'campaign_location.created',
-      // M3c: geocoding and the "Research …" task are handled from this event.
-      payload: { campaignId, address: values.address ?? null, city: values.city ?? null },
+      // The worker geocodes the store and creates its "Research …" task from this event.
+      payload: {
+        campaignId,
+        geocodeQuery: geocodeQuery({
+          address: values.address ?? null,
+          city: values.city ?? null,
+          county: values.county ?? null,
+        }),
+      },
     });
     return created!.id;
   }
@@ -343,10 +358,28 @@ export class CampaignsService {
         'researchRadiusM',
       ]);
       if (!changes) return this.loadLocation(tx, principal, id);
+      // A draft's new address is geocoded again, unless a person already confirmed the pin.
+      const regeocode =
+        (changes.address || changes.city || changes.county) &&
+        current.status === 'DRAFT' &&
+        current.geocodeStatus !== 'CONFIRMED';
       await tx
         .update(campaignLocation)
-        .set({ ...pick(input, Object.keys(changes)), version: sql`${campaignLocation.version} + 1` })
+        .set({
+          ...pick(input, Object.keys(changes)),
+          ...(regeocode ? UNGEOCODED : {}),
+          version: sql`${campaignLocation.version} + 1`,
+        })
         .where(eq(campaignLocation.id, id));
+      if (regeocode) {
+        const next = { ...current, ...pick(input, Object.keys(changes)) };
+        await this.outbox.publish(tx, principal.tenantId, 'campaign_location.address_changed', {
+          campaign_locationId: id,
+          campaignId: current.campaignId,
+          geocodeQuery: geocodeQuery(next),
+          actorMembershipId: principal.membershipId,
+        });
+      }
       // "Who changed campaign dates" [R§40] is answered by the field-level audit.
       await this.audit.record(tx, {
         ...actor(principal, client),
@@ -374,6 +407,11 @@ export class CampaignsService {
       const allowed =
         rule.from.includes(current.status) &&
         (action !== 'cancel' || locationCancellable(current.status, current.previousStatus));
+      if (allowed && action === 'start-research' && current.geocodeStatus !== 'CONFIRMED') {
+        throw new AppError('INVALID_TRANSITION', 'Confirm the store pin before starting research.', {
+          meta: { allowedActions: locationActions(current) },
+        });
+      }
       if (!allowed) {
         throw new AppError(
           'INVALID_TRANSITION',
@@ -384,12 +422,67 @@ export class CampaignsService {
         );
       }
       assertIfMatch(ifMatch, current.version);
-      const to: LocationStatus =
-        action === 'resume' ? current.previousStatus! : action === 'hold' ? 'ON_HOLD' : 'CANCELLED';
+      const to: LocationStatus = {
+        'start-research': 'RESEARCH' as const,
+        hold: 'ON_HOLD' as const,
+        resume: current.previousStatus!,
+        cancel: 'CANCELLED' as const,
+      }[action];
       await this.setLocationStatus(tx, principal, client, current, action, to, {
         ...(action === 'hold' ? { holdReason: input.reason ?? null, previousStatus: current.status } : {}),
         ...(action === 'cancel' ? { cancelReason: input.reason } : {}),
       });
+      return this.loadLocation(tx, principal, id);
+    });
+  }
+
+  /**
+   * A person places or accepts the store pin (04-user-flows.md A7): geocode status CONFIRMED, which
+   * start-research requires. Completes the location's "Confirm store pin" task, if any.
+   */
+  setStorePoint(
+    principal: Principal,
+    id: string,
+    input: StorePointRequest,
+    ifMatch: IfMatch,
+    client: ClientInfo,
+  ): Promise<LocationItem> {
+    return this.inTenant(principal, async (tx) => {
+      const current = await this.lockLocation(tx, principal, id);
+      if (TERMINAL.includes(current.status)) {
+        throw new AppError('INVALID_TRANSITION', 'This location is finished or cancelled.');
+      }
+      assertIfMatch(ifMatch, current.version);
+      const [before] = await tx
+        .select({ lat: POINT_LAT, lng: POINT_LNG })
+        .from(campaignLocation)
+        .where(eq(campaignLocation.id, id));
+      await tx
+        .update(campaignLocation)
+        .set({
+          storePoint: sql`ST_SetSRID(ST_MakePoint(${input.lng}, ${input.lat}), 4326)::geography`,
+          geocodeStatus: 'CONFIRMED',
+          placeId: input.placeId ?? null,
+          geocodeError: null,
+          pinConfirmedAt: new Date(),
+          pinConfirmedByMembershipId: principal.membershipId,
+          version: sql`${campaignLocation.version} + 1`,
+        })
+        .where(eq(campaignLocation.id, id));
+      await this.audit.record(tx, {
+        ...actor(principal, client),
+        action: 'campaign_location.store_confirmed',
+        subjectType: 'campaign_location',
+        subjectId: id,
+        changes: {
+          storePoint: {
+            from: before?.lat == null ? null : { lat: before.lat, lng: before.lng },
+            to: { lat: input.lat, lng: input.lng },
+          },
+          geocodeStatus: { from: current.geocodeStatus, to: 'CONFIRMED' },
+        },
+      });
+      await this.tasks.completeSystemTask(tx, userActor(principal, client), locationPinTaskKey(id));
       return this.loadLocation(tx, principal, id);
     });
   }
@@ -480,7 +573,7 @@ export class CampaignsService {
       from: current.status,
       to,
       action,
-      event: `campaign_location.${{ hold: 'held', resume: 'resumed', cancel: 'cancelled' }[action] ?? action}`,
+      event: `campaign_location.${{ 'start-research': 'research_started', hold: 'held', resume: 'resumed', cancel: 'cancelled' }[action] ?? action}`,
       payload: { campaignId: current.campaignId },
       ...(extra.cancelReason
         ? { reason: extra.cancelReason }
@@ -587,14 +680,19 @@ export class CampaignsService {
 
   private async loadLocations(tx: Transaction, where: SQL | undefined): Promise<LocationItem[]> {
     const rows = await tx
-      .select({ location: campaignLocation, buyerName: appUser.displayName })
+      .select({
+        location: campaignLocation,
+        buyerName: appUser.displayName,
+        lat: POINT_LAT,
+        lng: POINT_LNG,
+      })
       .from(campaignLocation)
       .innerJoin(campaign, eq(campaign.id, campaignLocation.campaignId))
       .leftJoin(membership, eq(membership.id, campaignLocation.buyerMembershipId))
       .leftJoin(appUser, eq(appUser.id, membership.userId))
       .where(where)
       .orderBy(asc(campaignLocation.createdAt), asc(campaignLocation.id));
-    return rows.map(({ location: l, buyerName }) => ({
+    return rows.map(({ location: l, buyerName, lat, lng }) => ({
       id: l.id,
       campaignId: l.campaignId,
       name: l.name,
@@ -611,17 +709,39 @@ export class CampaignsService {
       cancelReason: l.cancelReason,
       researchRadiusM: l.researchRadiusM,
       briefLineId: l.briefLineId,
+      storePoint: lat !== null && lng !== null ? { lat: Number(lat), lng: Number(lng) } : null,
+      geocodeStatus: l.geocodeStatus,
+      geocodedAddress: l.geocodedAddress,
+      geocodeError: l.geocodeError,
+      pinConfirmedAt: l.pinConfirmedAt?.toISOString() ?? null,
       version: l.version,
       actions: locationActions(l),
     }));
   }
 }
 
-function locationActions(l: Pick<LocationRow, 'status' | 'previousStatus'>): LocationAction[] {
+function locationActions(
+  l: Pick<LocationRow, 'status' | 'previousStatus' | 'geocodeStatus'>,
+): LocationAction[] {
   return allowedActions(LOCATION_TRANSITIONS, l.status).filter(
-    (a) => a !== 'cancel' || locationCancellable(l.status, l.previousStatus),
+    (a) =>
+      (a !== 'cancel' || locationCancellable(l.status, l.previousStatus)) &&
+      (a !== 'start-research' || l.geocodeStatus === 'CONFIRMED'),
   );
 }
+
+/** Coordinates of the store pin (the geography column holds EWKB; read it as numbers). */
+const POINT_LAT = sql<number | null>`ST_Y(${campaignLocation.storePoint}::geometry)`;
+const POINT_LNG = sql<number | null>`ST_X(${campaignLocation.storePoint}::geometry)`;
+
+/** Back to "not geocoded yet" (an address changed before the pin was confirmed). */
+const UNGEOCODED = {
+  storePoint: null,
+  geocodeStatus: 'PENDING' as const,
+  placeId: null,
+  geocodedAddress: null,
+  geocodeError: null,
+};
 
 function requireOpenCampaign(current: CampaignRow): void {
   if (current.status === 'COMPLETED' || current.status === 'CANCELLED') {

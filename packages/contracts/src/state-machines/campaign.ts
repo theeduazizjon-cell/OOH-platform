@@ -13,8 +13,9 @@ export const CAMPAIGN_TRANSITIONS: TransitionTable<CampaignStatus, CampaignActio
 };
 
 /**
- * Campaign location (06-state-machines.md §5), the operational state machine. M3b implements hold,
- * resume and cancel; the other transitions arrive with research, studies, production and field ops.
+ * Campaign location (06-state-machines.md §5), the operational state machine. Implemented so far:
+ * start-research (pin confirmed), hold, resume and cancel; the other transitions arrive with
+ * studies, production and field ops.
  */
 export const LOCATION_STATUSES = [
   'DRAFT',
@@ -48,10 +49,17 @@ export const TERMINAL_LOCATION_STATUSES = [
   'CANCELLED',
 ] as const satisfies readonly LocationStatus[];
 
-export const LOCATION_ACTIONS = ['hold', 'resume', 'cancel'] as const;
+export const LOCATION_ACTIONS = ['start-research', 'hold', 'resume', 'cancel'] as const;
 export type LocationAction = (typeof LOCATION_ACTIONS)[number];
 
 export const LOCATION_TRANSITIONS: TransitionTable<LocationStatus, LocationAction> = {
+  // Guard (API and DB): the store pin is CONFIRMED (04-user-flows.md A7).
+  'start-research': {
+    action: 'start-research',
+    from: ['DRAFT'],
+    to: 'RESEARCH',
+    permission: 'campaign_location.manage',
+  },
   hold: {
     action: 'hold',
     from: LOCATION_STATUSES.filter((s) => s !== 'ON_HOLD' && s !== 'COMPLETED' && s !== 'CANCELLED'),
@@ -78,3 +86,7 @@ export function locationCancellable(status: LocationStatus, previousStatus: Loca
   const effective = status === 'ON_HOLD' ? previousStatus : status;
   return effective !== null && (PRE_LIVE_STATUSES as readonly LocationStatus[]).includes(effective);
 }
+
+/** Store pin geocoding (04-user-flows.md A6–A7). CONFIRMED = a person placed or accepted the pin. */
+export const GEOCODE_STATUSES = ['PENDING', 'RESOLVED', 'AMBIGUOUS', 'FAILED', 'CONFIRMED'] as const;
+export type GeocodeStatus = (typeof GEOCODE_STATUSES)[number];
