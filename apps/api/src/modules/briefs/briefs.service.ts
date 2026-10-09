@@ -28,6 +28,7 @@ import {
 } from '@ooh/db';
 import { and, asc, eq, isNull, lt, type SQL, sql } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
+import { userActor } from '../../core/audit/actor';
 import { AuditService } from '../../core/audit/audit.service';
 import { type Principal } from '../../core/auth/principal';
 import { DatabaseService } from '../../core/database/database.service';
@@ -178,7 +179,11 @@ export class BriefsService {
         currency: deal.currency,
         specialRequirements: null,
       });
-      await this.tasks.completeSystemTask(tx, principal, client, wonOpportunityTaskKey(opportunityId));
+      await this.tasks.completeSystemTask(
+        tx,
+        userActor(principal, client),
+        wonOpportunityTaskKey(opportunityId),
+      );
       return this.loadDetail(tx, principal, id);
     });
   }

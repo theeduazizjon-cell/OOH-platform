@@ -21,6 +21,16 @@
                 └──────────────────────────────────┘  AI jobs, PDF/Excel generation
 ```
 
+**Outbox dispatch (implemented, M3c)**: business transactions insert `outbox_event` rows (`TransitionsService`,
+`OutboxService`). The worker (`apps/api/src/worker.ts`, `pnpm --filter @ooh/api start:worker`) polls with
+`outbox_claim(limit, lease)`: a `SECURITY DEFINER` function owned by `ooh_auth` (migration 0023) that leases due events
+of **all** tenants with `FOR UPDATE SKIP LOCKED`, since the runtime role only sees one tenant. Each event's handlers
+then run in **that tenant's** RLS transaction, and the event is marked dispatched in the same transaction, so an
+event's effects and its "done" mark commit together (handlers must be idempotent: dedupe keys). Failures retry with
+exponential backoff (5 s … 1 h) and are parked (`failed_at`) after 10 attempts. The dispatcher needs only PostgreSQL;
+BullMQ joins for scheduled scans and rate-limited jobs (geocoding, email). In development the API can dispatch
+in-process (`OUTBOX_DISPATCH_IN_PROCESS=true`, refused in production).
+
 **Why not microservices**: one team, one tightly-connected domain (a client approval touches research, inventory,
 commercial and work in one transaction), and a need for strong consistency. Module boundaries plus the outbox
 leave room to extract services later, for example the AI or media processing workers.

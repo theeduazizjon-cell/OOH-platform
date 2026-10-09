@@ -7,6 +7,7 @@ import { AuthCoreModule } from './core/auth/auth-core.module';
 import { DatabaseModule } from './core/database/database.module';
 import { REQUEST_ID_HEADER } from './core/http/request-id';
 import { RedisModule } from './core/redis/redis.module';
+import { OutboxModule } from './core/outbox/outbox.module';
 import { StateModule } from './core/state/state.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { BriefsModule } from './modules/briefs/briefs.module';
@@ -44,6 +45,7 @@ export class AppModule {
         RedisModule,
         AuditModule,
         StateModule,
+        OutboxModule,
         AuthCoreModule,
         HealthModule,
         AuthModule,

@@ -30,7 +30,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import type { LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { PasswordService } from '../src/core/auth/password.service';
-import { createTestApp } from './support';
+import { createTestApp, drainOutbox } from './support';
 
 const PASSWORD = 'correct horse battery staple';
 const suffix = Date.now().toString(36);
@@ -328,6 +328,7 @@ describe('brief from a won opportunity', () => {
     ).json<OpportunityDetail>();
     expect(code(await send('sales', 'POST', `/opportunities/${opp.id}/brief`))).toBe('INVALID_TRANSITION');
     opp = (await send('sales', 'POST', `/opportunities/${opp.id}/actions/win`, {}, opp.version)).json();
+    await drainOutbox(app); // the worker creates "Create brief"
 
     const response = await send('sales', 'POST', `/opportunities/${opp.id}/brief`);
     expect(response.statusCode).toBe(201);

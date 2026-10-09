@@ -7,7 +7,6 @@ import {
   type Page,
   type PermissionKey,
   type UpdateOpportunityRequest,
-  wonOpportunityTaskKey,
 } from '@ooh/contracts';
 import {
   appUser,
@@ -27,7 +26,7 @@ import { AppError } from '../../core/http/app-error';
 import { type ClientInfo } from '../../core/http/client-info';
 import { assertIfMatch, type IfMatch } from '../../core/http/concurrency';
 import { decodeIdCursor, encodeIdCursor } from '../../core/http/cursor';
-import { TasksService } from '../tasks/tasks.service';
+import { OutboxService } from '../../core/state/outbox.service';
 import { ActivitiesService } from './activities.service';
 
 type Stage = typeof pipelineStage.$inferSelect;
@@ -48,9 +47,6 @@ const SCALAR_FIELDS = [
 
 const notFound = () => new AppError('NOT_FOUND', 'Opportunity not found.');
 
-/** The "Create brief" task after a win is due two days later (OPD-28). */
-const CREATE_BRIEF_DUE_MS = 2 * 24 * 60 * 60 * 1000;
-
 /**
  * Opportunities and their state machine (docs/architecture/06-state-machines.md §2): move between
  * OPEN stages, win (value + close date), lose (reason), reopen (Management, reason). The database
@@ -62,7 +58,7 @@ export class OpportunitiesService {
     private readonly database: DatabaseService,
     private readonly activities: ActivitiesService,
     private readonly audit: AuditService,
-    private readonly tasks: TasksService,
+    private readonly outbox: OutboxService,
   ) {}
 
   list(principal: Principal, query: OpportunityListQuery): Promise<Page<OpportunityListItem>> {
@@ -259,16 +255,15 @@ export class OpportunitiesService {
         subject: `Won (${estimatedValue} ${current.currency})`,
         changes: { stage: { from: current.stage.name, to: won.name } },
       });
-      // 06-state-machines.md §2: opportunity.won → task "Create brief" for the owner (OPD-28), once.
-      // In the same transaction until the outbox arrives (M3), then it moves to an event handler.
-      await this.tasks.createSystemTask(tx, principal, client, {
-        dedupeKey: wonOpportunityTaskKey(id),
-        title: `Create brief: ${current.name}`,
-        notes: `Won for ${estimatedValue} ${current.currency}. Capture the client's request as a brief.`,
+      // 06-state-machines.md §2: opportunity.won → task "Create brief" (handled by the worker).
+      await this.outbox.publish(tx, principal.tenantId, 'opportunity.won', {
+        opportunityId: id,
         organisationId: current.organisationId,
-        subject: { type: 'opportunity', id },
-        assigneeMembershipId: current.ownerMembershipId,
-        dueAt: new Date(Date.now() + CREATE_BRIEF_DUE_MS),
+        ownerMembershipId: current.ownerMembershipId,
+        name: current.name,
+        estimatedValue,
+        currency: current.currency,
+        actorMembershipId: principal.membershipId,
       });
       return this.loadDetail(tx, principal, id);
     });

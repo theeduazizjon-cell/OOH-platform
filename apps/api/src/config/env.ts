@@ -31,6 +31,11 @@ export const envSchema = z.object({
   COOKIE_SECURE: z.stringbool().optional(),
   /** Trust X-Forwarded-For from a reverse proxy/load balancer (for client IPs in audit and throttling). */
   TRUST_PROXY: z.stringbool().default(false),
+  /**
+   * Development convenience: the API process also dispatches the outbox, so `pnpm dev` needs no
+   * separate worker. Production runs `dist/worker.js` instead (refused there).
+   */
+  OUTBOX_DISPATCH_IN_PROCESS: z.stringbool().default(false),
 });
 
 export type Env = z.infer<typeof envSchema> & { COOKIE_SECURE: boolean };
@@ -45,6 +50,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     throw new InvalidEnvironmentError(`Invalid environment configuration:\n${z.prettifyError(result.error)}`);
   }
   const env = result.data;
+  if (env.NODE_ENV === 'production' && env.OUTBOX_DISPATCH_IN_PROCESS) {
+    throw new InvalidEnvironmentError(
+      'OUTBOX_DISPATCH_IN_PROCESS is for development; run the worker in production',
+    );
+  }
   if (env.NODE_ENV === 'production' && env.COOKIE_SECURE === false) {
     throw new InvalidEnvironmentError('COOKIE_SECURE=false is not allowed in production');
   }

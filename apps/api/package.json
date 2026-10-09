@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:int": "vitest run --config vitest.int.config.ts"
+    "test:int": "vitest run --config vitest.int.config.ts",
+    "start:worker": "node --enable-source-maps dist/worker.js"
   },
   "dependencies": {
     "@fastify/cookie": "11.1.2",

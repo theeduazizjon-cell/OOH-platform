@@ -20,6 +20,7 @@ const task = (id: string, dueAt: Date | null, status: TaskItem['status'] = 'OPEN
   completedAt: status === 'DONE' ? NOW.toISOString() : null,
   assignee: null,
   organisation: null,
+  campaign: null,
   subject: null,
   createdBy: null,
   createdAt: NOW.toISOString(),
