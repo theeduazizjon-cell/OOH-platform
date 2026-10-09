@@ -14,6 +14,7 @@ export default defineConfig({
     './src/schema/work.ts',
     './src/schema/briefs.ts',
     './src/schema/inventory.ts',
+    './src/schema/files.ts',
   ],
   out: './migrations',
   strict: true,

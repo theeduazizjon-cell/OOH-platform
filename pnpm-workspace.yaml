@@ -11,3 +11,5 @@ onlyBuiltDependencies:
 
 ignoredBuiltDependencies:
   - protobufjs
+  # sharp loads prebuilt libvips binaries (@img/sharp-*); its script only compiles from source.
+  - sharp

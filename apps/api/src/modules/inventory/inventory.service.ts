@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnModuleInit } from '@nestjs/common';
 import {
   allowedActions,
   ASSET_TRANSITIONS,
@@ -29,6 +29,8 @@ import {
   assetTerms,
   assetType,
   dimensionPreset,
+  fileLink,
+  fileObject,
   mountPosition,
   oohAsset,
   organisation,
@@ -41,6 +43,7 @@ import { AuditService } from '../../core/audit/audit.service';
 import { type Principal } from '../../core/auth/principal';
 import { DatabaseService } from '../../core/database/database.service';
 import { isPgError } from '../../core/database/pg-errors';
+import { FileSubjects } from '../../core/files/file-subjects';
 import { AppError } from '../../core/http/app-error';
 import { type ClientInfo } from '../../core/http/client-info';
 import { assertIfMatch, type IfMatch } from '../../core/http/concurrency';
@@ -80,12 +83,34 @@ export function rangeDates(range: string): { from: string; to: string | null } {
  * their field jobs, which arrive in M9 (until then: none).
  */
 @Injectable()
-export class InventoryService {
+export class InventoryService implements OnModuleInit {
   constructor(
     private readonly database: DatabaseService,
     private readonly audit: AuditService,
     private readonly transitions: TransitionsService,
+    private readonly fileSubjects: FileSubjects,
   ) {}
+
+  /** Asset files (photos, documents): visible to whoever sees the asset, attached by asset editors. */
+  onModuleInit(): void {
+    const readable = async (tx: Transaction, principal: Principal, id: string) => {
+      if (!principal.permissions.has('asset.read')) return null;
+      const [row] = await tx
+        .select({ lifecycle: oohAsset.lifecycle })
+        .from(oohAsset)
+        .where(and(eq(oohAsset.id, id), this.readScope(principal)));
+      return row ?? null;
+    };
+    this.fileSubjects.register('asset', {
+      canRead: async (tx, principal, id) => (await readable(tx, principal, id)) !== null,
+      canWrite: async (tx, principal, id) => {
+        const asset = await readable(tx, principal, id);
+        return (
+          asset !== null && asset.lifecycle !== 'DECOMMISSIONED' && principal.permissions.has('asset.update')
+        );
+      },
+    });
+  }
 
   // ── configuration (read) ───────────────────────────────────────────────────
 
@@ -270,7 +295,7 @@ export class InventoryService {
     });
   }
 
-  /** activate (terms covering today) / suspend (reason) / reinstate / decommission. */
+  /** activate (terms covering today + a READY photo) / suspend (reason) / reinstate / decommission. */
   transition(
     principal: Principal,
     id: string,
@@ -296,13 +321,30 @@ export class InventoryService {
           .select({ id: assetTerms.id })
           .from(assetTerms)
           .where(and(eq(assetTerms.assetId, id), sql`${assetTerms.validPeriod} @> current_date`));
-        if (!terms) {
+        const [photo] = await tx
+          .select({ id: fileLink.id })
+          .from(fileLink)
+          .innerJoin(fileObject, eq(fileObject.id, fileLink.fileId))
+          .where(
+            and(
+              eq(fileLink.subjectType, 'asset'),
+              eq(fileLink.subjectId, id),
+              eq(fileLink.purpose, 'ASSET_PHOTO'),
+              eq(fileObject.status, 'READY'),
+            ),
+          )
+          .limit(1);
+        const errors = [
+          ...(terms
+            ? []
+            : [{ path: 'terms', message: 'Record who owns or supplies it (terms covering today)' }]),
+          ...(photo ? [] : [{ path: 'photos', message: 'Add at least one checked photo of the asset' }]),
+        ];
+        if (errors.length > 0) {
           throw new AppError(
             'VALIDATION_FAILED',
-            'An asset joins the inventory once its current terms are recorded.',
-            {
-              errors: [{ path: 'terms', message: 'Record who owns or supplies it (terms covering today)' }],
-            },
+            'An asset joins the inventory once its current terms and a photo are recorded.',
+            { errors },
           );
         }
       }
