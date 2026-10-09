@@ -54,7 +54,8 @@ ooh_asset (Core, SD, Aud)                    one physical structure at one place
   Billboards can book faces independently. One rule for double-booking then covers all asset types.
 - **Specialised attributes**: common columns on `ooh_asset`. Type-specific simple attributes (pole material,
   prism rotation count, mesh surface area, wall permit ref) go in `attributes jsonb`, validated against
-  `asset_type.attribute_schema` at write time. Only _structural_ differences (mounts/faces) get tables. This is
+  `asset_type.attribute_schema` at write time (implemented as a documented subset of JSON Schema: per attribute
+  `type` string/number/integer/boolean, `label`, `required`, `enum`; see `attributeProblems` in contracts). Only _structural_ differences (mounts/faces) get tables. This is
   composition rather than table-per-type inheritance, chosen because it lets new types be added by configuration [R§48].
 - **Dimensions** are configurable presets (`dimension_preset`: 0.8×2, 0.8×1.2, 0.8×1.4 …) copied as values
   onto the face, so editing a preset never rewrites history.

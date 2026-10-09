@@ -16,6 +16,7 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { TenantConfigModule } from './modules/config/config.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { HealthModule } from './modules/health/health.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
 import { MembershipsModule } from './modules/memberships/memberships.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { TasksModule } from './modules/tasks/tasks.module';
@@ -58,6 +59,7 @@ export class AppModule {
         TasksModule,
         BriefsModule,
         CampaignsModule,
+        InventoryModule,
       ],
     };
   }
