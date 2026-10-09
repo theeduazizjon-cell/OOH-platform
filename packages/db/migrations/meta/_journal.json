@@ -190,6 +190,20 @@
       "when": 1791549997140,
       "tag": "0026_inventory_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1791568931089,
+      "tag": "0027_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791568933699,
+      "tag": "0028_files_rls",
+      "breakpoints": true
     }
   ]
 }

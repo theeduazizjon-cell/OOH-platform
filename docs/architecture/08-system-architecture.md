@@ -94,6 +94,14 @@ error filter → RFC 9457 problem details, idempotency interceptor.
   the specific entity (asset, face booking, job item, study), never to a campaign folder [R§25].
 - **Download**: `GET /files/{id}/url` → authz on the linked subject → presigned GET (5 min, `Content-Disposition`).
 - **Limits** (config): images 25 MB, video 300 MB (MVP: short clips), documents 50 MB. Allowed MIME allow-list.
+- **Implemented (M4b)**: `FileStorage` interface with S3 (also MinIO) and, for development only, local disk whose
+  "presigned" URLs are HMAC-signed tokens served by the API (`/api/v1/storage?token=…`, bound to key, method, type,
+  size and expiry). `FileScanner`: ClamAV (`clamd` INSTREAM) or `none` (development only). Production refuses to
+  start without S3 and ClamAV. Processing is the outbox handler `file.uploaded` → `files.process`: the read, checks,
+  scan and thumbnail (webp, 480 px, EXIF orientation applied, metadata dropped) run outside any transaction; the status
+  is written in the event's tenant transaction. An unreachable scanner throws, so the outbox retries with backoff.
+  Activating an asset needs ≥ 1 `READY` `ASSET_PHOTO`. HEIC is accepted but gets no thumbnail yet (sharp's prebuilt
+  binaries lack HEVC); video posters come with ffmpeg (P2).
 - **Lifecycle**: originals kept for the tenant's retention policy; orphans (PENDING > 24 h) purged; derivatives regenerable.
 
 ## 5. Tasks, calendar, notifications
