@@ -24,6 +24,7 @@ import {
   progressSummary,
 } from './campaign-status';
 import { LocationForm, type LocationFormValues } from './location-form';
+import { PinEditor, PinStatus } from './location-pin';
 import { TaskList } from './task-list';
 
 export const CAMPAIGN_CONFLICT_MESSAGE =
@@ -79,10 +80,12 @@ export function CampaignPage({ campaignId }: { campaignId: string }) {
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ['campaigns'] });
     await queryClient.invalidateQueries({ queryKey: ['campaign', campaignId] });
+    // Pins and status changes complete or create tasks.
+    await queryClient.invalidateQueries({ queryKey: ['tasks'] });
   };
 
   /** Changes send If-Match; on 412 the campaign reloads and the error explains why. */
-  async function send(path: string, method: 'POST' | 'PATCH', json: unknown, version?: number) {
+  async function send(path: string, method: 'POST' | 'PATCH' | 'PUT', json: unknown, version?: number) {
     try {
       await api.request(path, {
         method,
@@ -280,7 +283,22 @@ export function CampaignPage({ campaignId }: { campaignId: string }) {
               </thead>
               <tbody>
                 {c.locationItems.map((l) =>
-                  editing === l.id ? (
+                  editing === `pin:${l.id}` ? (
+                    <tr key={l.id}>
+                      <td colSpan={6} className="bg-slate-50 px-2 py-3">
+                        <PinEditor
+                          location={l}
+                          onCancel={() => setEditing(null)}
+                          onSave={(pin) =>
+                            run(
+                              () => send(`/locations/${l.id}/store-point`, 'PUT', pin, l.version),
+                              `${l.name}: pin confirmed.`,
+                            )
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ) : editing === l.id ? (
                     <tr key={l.id}>
                       <td colSpan={6} className="px-2 py-3">
                         <LocationForm
@@ -315,6 +333,7 @@ export function CampaignPage({ campaignId }: { campaignId: string }) {
                       <td className="px-2 py-2">{l.buyer?.displayName}</td>
                       <td className="px-2 py-2">
                         <LocationStatusBadge status={l.status} />
+                        <PinStatus location={l} />
                         {l.previousStatus && (
                           <span className="block text-xs text-slate-500">
                             resumes to {LOCATION_STATUS_LABELS[l.previousStatus].toLowerCase()}
@@ -337,6 +356,16 @@ export function CampaignPage({ campaignId }: { campaignId: string }) {
                                   {LOCATION_LABELS[a]}
                                 </Button>
                               ))}
+                            {l.status !== 'CANCELLED' && l.status !== 'COMPLETED' && (
+                              <Button
+                                variant={l.geocodeStatus === 'CONFIRMED' ? 'ghost' : 'secondary'}
+                                className="h-7 px-2"
+                                aria-label={`Pin: ${l.name}`}
+                                onClick={() => setEditing(`pin:${l.id}`)}
+                              >
+                                Pin
+                              </Button>
+                            )}
                             {l.status !== 'CANCELLED' && l.status !== 'COMPLETED' && (
                               <Button
                                 variant="ghost"
