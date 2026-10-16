@@ -16,6 +16,7 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { TenantConfigModule } from './modules/config/config.module';
 import { CrmModule } from './modules/crm/crm.module';
 import { FilesModule } from './modules/files/files.module';
+import { GeoApiModule } from './modules/geo/geo.module';
 import { HealthModule } from './modules/health/health.module';
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { MembershipsModule } from './modules/memberships/memberships.module';
@@ -62,6 +63,7 @@ export class AppModule {
         CampaignsModule,
         FilesModule,
         InventoryModule,
+        GeoApiModule,
       ],
     };
   }

@@ -22,6 +22,11 @@ import {
   type TermsItem,
   type UpdateAssetRequest,
   type UpdateFaceRequest,
+  clusterCellDegrees,
+  MAP_POINTS_LIMIT,
+  MAP_POINTS_MIN_ZOOM,
+  type MapAssetsQuery,
+  type MapAssetsResponse,
 } from '@ooh/contracts';
 import {
   advertisingFace,
@@ -169,6 +174,59 @@ export class InventoryService implements OnModuleInit {
       const hasMore = rows.length > query.limit;
       const data = rows.slice(0, query.limit);
       return { data, page: { nextCursor: hasMore ? encodeIdCursor(data.at(-1)!.id) : null, hasMore } };
+    });
+  }
+
+  /**
+   * The map's viewport (07-database.md §5): individual points from MAP_POINTS_MIN_ZOOM (the browser
+   * clusters them), counts per grid cell below it. Decommissioned assets only when asked for.
+   */
+  mapAssets(principal: Principal, query: MapAssetsQuery): Promise<MapAssetsResponse> {
+    const { west, south, east, north } = query.bbox;
+    const where = and(
+      this.readScope(principal),
+      sql`${oohAsset.location} && ST_MakeEnvelope(${west}, ${south}, ${east}, ${north}, 4326)::geography`,
+      query.assetTypeId ? eq(oohAsset.assetTypeId, query.assetTypeId) : undefined,
+      query.lifecycle ? eq(oohAsset.lifecycle, query.lifecycle) : ne(oohAsset.lifecycle, 'DECOMMISSIONED'),
+    );
+    return this.inTenant(principal, async (tx) => {
+      if (query.zoom >= MAP_POINTS_MIN_ZOOM) {
+        const rows = await tx
+          .select({
+            id: oohAsset.id,
+            code: oohAsset.code,
+            lat: LAT,
+            lng: LNG,
+            kind: assetType.kind,
+            assetTypeId: oohAsset.assetTypeId,
+            lifecycle: oohAsset.lifecycle,
+          })
+          .from(oohAsset)
+          .innerJoin(assetType, eq(assetType.id, oohAsset.assetTypeId))
+          .where(where)
+          .orderBy(oohAsset.id)
+          .limit(MAP_POINTS_LIMIT + 1);
+        return {
+          kind: 'points',
+          points: rows
+            .slice(0, MAP_POINTS_LIMIT)
+            .map((r) => ({ ...r, lat: Number(r.lat), lng: Number(r.lng) })),
+          truncated: rows.length > MAP_POINTS_LIMIT,
+        };
+      }
+      const cell = clusterCellDegrees(query.zoom);
+      const geom = sql`${oohAsset.location}::geometry`;
+      const rows = await tx
+        .select({
+          lat: sql<number>`ST_Y(ST_Centroid(ST_Collect(${geom})))`,
+          lng: sql<number>`ST_X(ST_Centroid(ST_Collect(${geom})))`,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(oohAsset)
+        .where(where)
+        .groupBy(sql`ST_SnapToGrid(${geom}, ${cell}::float8, ${cell}::float8)`);
+      const clusters = rows.map((r) => ({ lat: Number(r.lat), lng: Number(r.lng), count: r.count }));
+      return { kind: 'clusters', clusters, total: clusters.reduce((sum, c) => sum + c.count, 0) };
     });
   }
 

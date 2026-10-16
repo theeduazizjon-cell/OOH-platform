@@ -35,6 +35,7 @@ pnpm infra:up          # PostgreSQL 18 + PostGIS, Redis, Mailpit (creates the oo
 pnpm build             # builds shared packages
 pnpm db:migrate        # applies migrations as the schema owner
 pnpm db:seed           # 2 demo tenants with the 12 system roles, and 2 demo users
+pnpm db:seed:inventory # optional: 20k generated assets around Romanian cities for the map (SEED_ASSETS=…; -- --remove)
 pnpm dev               # API on http://localhost:3000, web app on http://localhost:5173
 curl localhost:3000/api/v1/health
 ```

@@ -4,14 +4,25 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
-import { type FileLinkItem, type UploadTicket } from '@ooh/contracts';
+import {
+  type FileLinkItem,
+  haversineM,
+  type LatLng,
+  type ReverseGeocodeResult,
+  type UploadTicket,
+} from '@ooh/contracts';
 import { inject } from 'vitest';
 import { AppModule } from '../src/app.module';
 import { configureApp, createFastifyAdapter } from '../src/bootstrap';
 import { loadEnv } from '../src/config/env';
 import { THROTTLE_STORE, type ThrottleStore } from '../src/core/auth/login-throttle';
 import { FILE_SCANNER, type FileScanner, NoFileScanner } from '../src/core/files/scanner';
-import { GEO_PROVIDER, type GeocodeResult, type GeoProvider } from '../src/core/geo/geo-provider';
+import {
+  GEO_PROVIDER,
+  type GeocodeResult,
+  type GeoProvider,
+  type ProviderRoute,
+} from '../src/core/geo/geo-provider';
 import { OutboxDispatcher } from '../src/core/outbox/outbox.dispatcher';
 import { RedisService } from '../src/core/redis/redis.service';
 
@@ -40,7 +51,37 @@ export class MemoryThrottleStore implements ThrottleStore {
  * ambiguous (two stores), "Down" throws (transient outage), anything else is not found. Records queries.
  */
 export class FakeGeoProvider implements GeoProvider {
+  readonly configured = true;
   readonly queries: string[] = [];
+  /** Calls to the paid reverse-geocoding API (the service caches by point). */
+  reverseCalls = 0;
+
+  /** Sinaia's main street; latitude ≥ 89 simulates an outage; elsewhere there is no address. */
+  reverseGeocode(point: LatLng): Promise<ReverseGeocodeResult | null> {
+    this.reverseCalls++;
+    if (point.lat >= 89) return Promise.reject(new Error('provider unavailable'));
+    if (Math.abs(point.lat - 45.3486) < 0.01 && Math.abs(point.lng - 25.5517) < 0.01) {
+      return Promise.resolve({
+        formattedAddress: 'Bd. Carol I 25, Sinaia 106100, Romania',
+        address: 'Bd. Carol I 25',
+        city: 'Sinaia',
+        county: 'Prahova',
+        placeId: 'fake-carol-25',
+      });
+    }
+    return Promise.resolve(null);
+  }
+
+  /** A straight two-point "road", 1.4× the crow-flies distance at 50 km/h; none across the sea (lng < 20). */
+  route(origin: LatLng, destination: LatLng): Promise<ProviderRoute | null> {
+    if (destination.lng < 20) return Promise.resolve(null);
+    const distanceM = Math.round(haversineM(origin, destination) * 1.4);
+    return Promise.resolve({
+      distanceM,
+      durationS: Math.round(distanceM / (50 / 3.6)),
+      polyline: encodePolyline([origin, destination]),
+    });
+  }
 
   geocode(query: string): Promise<GeocodeResult> {
     this.queries.push(query);
@@ -187,4 +228,28 @@ export async function uploadFile(
     headers: auth,
   });
   return list.json<FileLinkItem[]>().find((l) => l.linkId === ticket.link.linkId)!;
+}
+
+/** Google polyline encoding (precision 5), for fakes; the API and web only decode. */
+export function encodePolyline(points: readonly LatLng[]): string {
+  let out = '';
+  let lastLat = 0;
+  let lastLng = 0;
+  const encode = (value: number) => {
+    let v = value < 0 ? ~(value << 1) : value << 1;
+    while (v >= 0x20) {
+      out += String.fromCharCode((0x20 | (v & 0x1f)) + 63);
+      v >>= 5;
+    }
+    out += String.fromCharCode(v + 63);
+  };
+  for (const p of points) {
+    const lat = Math.round(p.lat * 1e5);
+    const lng = Math.round(p.lng * 1e5);
+    encode(lat - lastLat);
+    encode(lng - lastLng);
+    lastLat = lat;
+    lastLng = lng;
+  }
+  return out;
 }
