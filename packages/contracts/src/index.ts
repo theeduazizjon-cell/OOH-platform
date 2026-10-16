@@ -6,6 +6,7 @@ export * from './crm';
 export * from './errors';
 export * from './files';
 export * from './inventory';
+export * from './inventory-import';
 export * from './invitations';
 export * from './pagination';
 export * from './permissions';

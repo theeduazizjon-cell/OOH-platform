@@ -243,6 +243,8 @@ export interface AssetListItem {
 export interface AssetDetail extends AssetListItem {
   attributes: Record<string, string | number | boolean>;
   notes: string | null;
+  /** Code in the system it came from (CSV import); unique per company. */
+  externalRef: string | null;
   suspendReason: string | null;
   lastVerifiedAt: string | null;
   streetViewRef: { panoId: string; heading: number; pitch: number; fov: number } | null;
@@ -298,6 +300,7 @@ export const createAssetRequestSchema = z.object({
   county: optionalText(100).optional(),
   attributes: attributes.default({}),
   notes: optionalText(5000).optional(),
+  externalRef: optionalText(100).optional(),
   streetViewRef: streetViewRef.nullable().optional(),
   duplicateOverride: duplicateOverride.optional(),
 });
@@ -313,6 +316,7 @@ export const updateAssetRequestSchema = z
     county: optionalText(100),
     attributes,
     notes: optionalText(5000),
+    externalRef: optionalText(100),
     streetViewRef: streetViewRef.nullable(),
     duplicateOverride,
   })

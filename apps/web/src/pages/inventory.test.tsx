@@ -73,6 +73,7 @@ describe('AssetForm', () => {
         county: null,
         attributes: { material: 'metal' },
         notes: null,
+        externalRef: null,
       },
       null,
     );
@@ -123,6 +124,7 @@ describe('asset request bodies', () => {
     county: null,
     attributes: {},
     notes: null,
+    externalRef: 'OLD-7',
   };
 
   it('adds the duplicate override only with a reason', () => {

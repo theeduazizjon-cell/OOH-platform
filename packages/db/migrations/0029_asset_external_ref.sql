@@ -1,0 +1,3 @@
+ALTER TABLE "ooh_asset" ADD COLUMN "external_ref" text;--> statement-breakpoint
+CREATE UNIQUE INDEX "ooh_asset_external_ref_uq" ON "ooh_asset" USING btree ("tenant_id","external_ref") WHERE "ooh_asset"."external_ref" IS NOT NULL;--> statement-breakpoint
+ALTER TABLE "ooh_asset" ADD CONSTRAINT "ooh_asset_external_ref_ck" CHECK ("ooh_asset"."external_ref" IS NULL OR length(btrim("ooh_asset"."external_ref")) BETWEEN 1 AND 100);

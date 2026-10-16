@@ -51,7 +51,7 @@ import { decodeIdCursor, encodeIdCursor } from '../../core/http/cursor';
 import { TransitionsService } from '../../core/state/transitions.service';
 
 type AssetRow = typeof oohAsset.$inferSelect;
-type TypeRow = typeof assetType.$inferSelect;
+export type TypeRow = typeof assetType.$inferSelect;
 type Changes = Record<string, { from: unknown; to: unknown }>;
 
 const notFound = () => new AppError('NOT_FOUND', 'Asset not found.');
@@ -186,9 +186,30 @@ export class InventoryService implements OnModuleInit {
       assertAttributes(type, input.attributes);
       const nearby = await this.nearbySameKind(tx, type.kind, input.lat, input.lng);
       if (nearby.length > 0 && !input.duplicateOverride) throw duplicate(nearby);
+      const { id } = await this.insertAsset(tx, principal, client, type, input, { nearby });
+      return this.loadDetail(tx, principal, id);
+    });
+  }
 
-      const code = await nextCode(tx, principal.tenantId, type.codePrefix);
-      const [created] = await tx
+  /**
+   * Inserts a checked asset (type active, attributes valid, duplicates resolved) with the type's
+   * default mounts and faces, its history and audit. Shared by POST /assets and the CSV import, which
+   * passes one `codes` sequence for the whole file.
+   */
+  async insertAsset(
+    tx: Transaction,
+    principal: Principal,
+    client: ClientInfo,
+    type: TypeRow,
+    input: Omit<CreateAssetRequest, 'assetTypeId'>,
+    options: { nearby: NearbyAsset[]; codes?: CodeSequence; source?: 'import' },
+  ): Promise<{ id: string; code: string }> {
+    const code = options.codes
+      ? await options.codes.next(tx, type.codePrefix)
+      : await nextCode(tx, principal.tenantId, type.codePrefix);
+    let created: { id: string } | undefined;
+    try {
+      [created] = await tx
         .insert(oohAsset)
         .values({
           tenantId: principal.tenantId,
@@ -200,33 +221,36 @@ export class InventoryService implements OnModuleInit {
           county: input.county ?? null,
           attributes: input.attributes,
           notes: input.notes ?? null,
+          externalRef: input.externalRef ?? null,
           streetViewRef: input.streetViewRef ?? null,
           createdByMembershipId: principal.membershipId,
         })
         .returning({ id: oohAsset.id });
-      for (let no = 1; no <= type.defaultMountPositions; no++) {
-        await this.insertMount(tx, principal.tenantId, created!.id, no, type.facesPerMount, {});
-      }
-      await this.transitions.record(tx, principal, client, {
+    } catch (error) {
+      throw externalRefTaken(error, input.externalRef);
+    }
+    for (let no = 1; no <= type.defaultMountPositions; no++) {
+      await this.insertMount(tx, principal.tenantId, created!.id, no, type.facesPerMount, {});
+    }
+    await this.transitions.record(tx, principal, client, {
+      subjectType: 'asset',
+      subjectId: created!.id,
+      from: null,
+      to: 'PROSPECTIVE',
+      action: 'create',
+      event: 'asset.created',
+      payload: { code, assetTypeId: type.id, ...(options.source ? { source: options.source } : {}) },
+    });
+    if (input.duplicateOverride) {
+      await this.audit.record(tx, {
+        ...userActor(principal, client),
+        action: 'asset.duplicate_overridden',
         subjectType: 'asset',
         subjectId: created!.id,
-        from: null,
-        to: 'PROSPECTIVE',
-        action: 'create',
-        event: 'asset.created',
-        payload: { code, assetTypeId: type.id },
+        metadata: { reason: input.duplicateOverride.reason, nearby: options.nearby },
       });
-      if (input.duplicateOverride) {
-        await this.audit.record(tx, {
-          ...userActor(principal, client),
-          action: 'asset.duplicate_overridden',
-          subjectType: 'asset',
-          subjectId: created!.id,
-          metadata: { reason: input.duplicateOverride.reason, nearby },
-        });
-      }
-      return this.loadDetail(tx, principal, created!.id);
-    });
+    }
+    return { id: created!.id, code };
   }
 
   update(
@@ -250,7 +274,7 @@ export class InventoryService implements OnModuleInit {
 
       const [before] = await tx.select({ lat: LAT, lng: LNG }).from(oohAsset).where(eq(oohAsset.id, id));
       const changes: Changes = {};
-      for (const field of ['address', 'city', 'county', 'notes'] as const) {
+      for (const field of ['address', 'city', 'county', 'notes', 'externalRef'] as const) {
         if (input[field] !== undefined && input[field] !== current[field])
           changes[field] = { from: current[field], to: input[field] };
       }
@@ -271,6 +295,7 @@ export class InventoryService implements OnModuleInit {
       await tx
         .update(oohAsset)
         .set({
+          ...(changes.externalRef ? { externalRef: input.externalRef } : {}),
           ...(changes.address ? { address: input.address } : {}),
           ...(changes.city ? { city: input.city } : {}),
           ...(changes.county ? { county: input.county } : {}),
@@ -280,7 +305,10 @@ export class InventoryService implements OnModuleInit {
           ...(changes.location ? { location: point(input.lat!, input.lng!) } : {}),
           version: sql`${oohAsset.version} + 1`,
         })
-        .where(eq(oohAsset.id, id));
+        .where(eq(oohAsset.id, id))
+        .catch((error: unknown) => {
+          throw externalRefTaken(error, input.externalRef);
+        });
       await this.audit.record(tx, {
         ...userActor(principal, client),
         action: 'asset.updated',
@@ -749,6 +777,7 @@ export class InventoryService implements OnModuleInit {
       ...item,
       attributes: row!.attributes,
       notes: row!.notes,
+      externalRef: row!.externalRef,
       suspendReason: row!.suspendReason,
       lastVerifiedAt: row!.lastVerifiedAt?.toISOString() ?? null,
       streetViewRef: row!.streetViewRef ?? null,
@@ -890,6 +919,32 @@ async function nextCode(tx: Transaction, tenantId: string, prefix: string): Prom
     .where(sql`${oohAsset.code} ~ ${`^${prefix}-[0-9]{6}$`}`);
   const next = row?.last ? Number(row.last.slice(prefix.length + 1)) + 1 : 1;
   return `${prefix}-${String(next).padStart(6, '0')}`;
+}
+
+/** Allocates codes for many assets in one transaction: one lock and one lookup per prefix. */
+export class CodeSequence {
+  private readonly last = new Map<string, number>();
+
+  constructor(private readonly tenantId: string) {}
+
+  async next(tx: Transaction, prefix: string): Promise<string> {
+    if (!this.last.has(prefix)) {
+      const first = await nextCode(tx, this.tenantId, prefix); // takes the prefix lock until commit
+      this.last.set(prefix, Number(first.slice(prefix.length + 1)) - 1);
+    }
+    const no = this.last.get(prefix)! + 1;
+    this.last.set(prefix, no);
+    return `${prefix}-${String(no).padStart(6, '0')}`;
+  }
+}
+
+/** A unique violation on the external reference as a 409; anything else unchanged. */
+function externalRefTaken(error: unknown, ref: string | null | undefined): unknown {
+  return isPgError(error, '23505', 'ooh_asset_external_ref_uq')
+    ? new AppError('CONFLICT', `Another asset already has the reference ${ref}.`, {
+        errors: [{ path: 'externalRef', message: 'Already used by another asset' }],
+      })
+    : error;
 }
 
 function duplicate(nearby: NearbyAsset[]): AppError {

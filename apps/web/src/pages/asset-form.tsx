@@ -24,6 +24,7 @@ export interface AssetFormValues {
   county: string | null;
   attributes: Record<string, string | number | boolean>;
   notes: string | null;
+  externalRef: string | null;
 }
 
 type AttributeValues = AssetFormValues['attributes'];
@@ -108,6 +109,7 @@ export function AssetForm({
           county: text(form, 'county'),
           attributes: attributes.values,
           notes: text(form, 'notes'),
+          externalRef: text(form, 'externalRef'),
         },
         reason,
       );
@@ -184,6 +186,16 @@ export function AssetForm({
         <div className="space-y-1.5">
           <Label htmlFor="asset-county">County</Label>
           <Input id="asset-county" name="county" maxLength={100} defaultValue={initial?.county ?? ''} />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="asset-external-ref">Reference in your old system</Label>
+          <Input
+            id="asset-external-ref"
+            name="externalRef"
+            maxLength={100}
+            placeholder="optional"
+            defaultValue={initial?.externalRef ?? ''}
+          />
         </div>
         {type &&
           Object.entries(type.attributeSchema).map(([key, spec]) => (

@@ -204,6 +204,20 @@
       "when": 1791568933699,
       "tag": "0028_files_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1792140681900,
+      "tag": "0029_asset_external_ref",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1792141702852,
+      "tag": "0030_asset_nearby",
+      "breakpoints": true
     }
   ]
 }
