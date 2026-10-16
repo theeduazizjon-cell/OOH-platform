@@ -5,6 +5,7 @@ export * from './concurrency';
 export * from './crm';
 export * from './errors';
 export * from './files';
+export * from './geo';
 export * from './inventory';
 export * from './inventory-import';
 export * from './invitations';

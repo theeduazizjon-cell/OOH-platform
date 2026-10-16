@@ -23,6 +23,8 @@ import {
   createBlockRequestSchema,
   createTermsRequestSchema,
   type DimensionPresetItem,
+  type MapAssetsResponse,
+  mapAssetsQuerySchema,
   mountRequestSchema,
   type Page,
   updateAssetRequestSchema,
@@ -245,5 +247,17 @@ export class InventoryController {
     request: FastifyRequest,
   ): Promise<AssetDetail> {
     return this.inventory.transition(principal, id, action, input, ifMatch, clientInfo(request));
+  }
+}
+
+/** The map's inventory layer (M5): what is in the viewport, as points or grid clusters. */
+@Controller('map')
+export class MapController {
+  constructor(private readonly inventory: InventoryService) {}
+
+  @Get('assets')
+  @RequirePermission('asset.read')
+  assets(@CurrentPrincipal() principal: Principal, @Query() query: unknown): Promise<MapAssetsResponse> {
+    return this.inventory.mapAssets(principal, parseWith(mapAssetsQuerySchema, query));
   }
 }
