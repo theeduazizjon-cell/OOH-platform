@@ -24,13 +24,14 @@ export const LOCATION_STATUS_LABELS: Record<LocationStatus, string> = {
   ON_HOLD: 'On hold',
 };
 
-const TONES: Record<string, string> = {
+const TONES = {
   neutral: 'bg-slate-100 text-slate-700',
   progress: 'bg-brand-50 text-brand-700',
   live: 'bg-emerald-50 text-emerald-800',
   warn: 'bg-amber-50 text-amber-800',
   done: 'bg-slate-100 text-slate-500',
-};
+} as const;
+export type BadgeTone = keyof typeof TONES;
 const LOCATION_TONE: Record<LocationStatus, keyof typeof TONES> = {
   DRAFT: 'neutral',
   RESEARCH: 'progress',
@@ -61,7 +62,7 @@ export function LocationStatusBadge({ status }: { status: LocationStatus }) {
   return <Badge tone={LOCATION_TONE[status]}>{LOCATION_STATUS_LABELS[status]}</Badge>;
 }
 
-function Badge({ tone, children }: { tone: keyof typeof TONES; children: string }) {
+export function Badge({ tone, children }: { tone: BadgeTone; children: string }) {
   return (
     <span className={cn('whitespace-nowrap rounded px-1.5 py-0.5 text-xs font-medium', TONES[tone])}>
       {children}
