@@ -29,5 +29,6 @@ export function allowedActions<Status extends string, Action extends string>(
     .map((t) => t.action);
 }
 
+export * from './asset';
 export * from './brief';
 export * from './campaign';

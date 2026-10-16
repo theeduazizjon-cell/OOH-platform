@@ -24,3 +24,11 @@ export function isUniqueViolation(error: unknown, constraint?: string): boolean 
   const name = pg.constraint_name ?? pg.constraint;
   return constraint === undefined || name === constraint;
 }
+
+/** True for a PostgreSQL error with this SQLSTATE (e.g. 23514 check, 23P01 exclusion), optionally of one constraint. */
+export function isPgError(error: unknown, code: string, constraint?: string): boolean {
+  const pg = findPgError(error);
+  if (pg?.code !== code) return false;
+  const name = pg.constraint_name ?? pg.constraint;
+  return constraint === undefined || name === constraint;
+}

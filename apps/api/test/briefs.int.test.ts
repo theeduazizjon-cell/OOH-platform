@@ -284,7 +284,9 @@ describe('briefs', () => {
     ]);
     const events = await owner.db
       .select({ type: outboxEvent.eventType, payload: outboxEvent.payload })
-      .from(outboxEvent);
+      .from(outboxEvent)
+      // Rows come back in no particular order without ORDER BY (it differed on CI).
+      .orderBy(asc(outboxEvent.occurredAt), asc(outboxEvent.id));
     expect(events.filter((e) => e.payload.briefId === b.id).map((e) => e.type)).toEqual([
       'brief.created',
       'brief.confirmed',

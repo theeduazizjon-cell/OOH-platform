@@ -1,5 +1,7 @@
 import {
   DEFAULT_ACTIVITY_TYPES,
+  DEFAULT_ASSET_TYPES,
+  DEFAULT_DIMENSION_PRESETS,
   DEFAULT_ORGANISATION_CLASSIFICATIONS,
   DEFAULT_PIPELINE,
   ROLE_TEMPLATES,
@@ -8,6 +10,8 @@ import { and, eq } from 'drizzle-orm';
 import type { Database, Transaction } from './client';
 import {
   activityType,
+  assetType,
+  dimensionPreset,
   organisationClassification,
   pipeline,
   pipelineStage,
@@ -42,6 +46,7 @@ export async function provisionTenant(
     await installDefaultClassifications(tx, row.id);
     await installDefaultActivityTypes(tx, row.id);
     await installDefaultPipeline(tx, row.id);
+    await installDefaultInventoryConfig(tx, row.id);
     return { tenantId: row.id };
   });
 }
@@ -130,4 +135,16 @@ async function installDefaultPipeline(tx: Transaction, tenantId: string): Promis
       position: (index + 1) * 10,
     })),
   );
+}
+
+/** Default asset types (templates) and face sizes; existing ones (by key / name) are left alone. */
+async function installDefaultInventoryConfig(tx: Transaction, tenantId: string): Promise<void> {
+  await tx
+    .insert(assetType)
+    .values(DEFAULT_ASSET_TYPES.map((t, index) => ({ ...t, tenantId, sortOrder: (index + 1) * 10 })))
+    .onConflictDoNothing({ target: [assetType.tenantId, assetType.key] });
+  await tx
+    .insert(dimensionPreset)
+    .values(DEFAULT_DIMENSION_PRESETS.map((p, index) => ({ ...p, tenantId, sortOrder: (index + 1) * 10 })))
+    .onConflictDoNothing({ target: [dimensionPreset.tenantId, dimensionPreset.name] });
 }
