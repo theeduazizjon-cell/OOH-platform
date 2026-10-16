@@ -19,7 +19,8 @@
     "test:int": "vitest run --config vitest.int.config.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=../../.env --import tsx src/scripts/migrate.ts",
-    "db:seed": "node --env-file-if-exists=../../.env --import tsx src/scripts/seed.ts"
+    "db:seed": "node --env-file-if-exists=../../.env --import tsx src/scripts/seed.ts",
+    "db:seed:inventory": "node --env-file-if-exists=../../.env --import tsx src/scripts/seed-inventory.ts"
   },
   "devDependencies": {
     "@node-rs/argon2": "2.2.1",
