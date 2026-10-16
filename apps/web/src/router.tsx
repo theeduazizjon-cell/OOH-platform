@@ -11,6 +11,7 @@ import { NAV_ITEMS } from '@/app/navigation';
 import { RequirePermission } from '@/app/require-permission';
 import type { AuthContextValue } from '@/lib/auth';
 import { AcceptInvitationPage } from '@/pages/accept-invitation-page';
+import { AssetPage } from '@/pages/asset-page';
 import { BriefPage } from '@/pages/brief-page';
 import { CampaignPage } from '@/pages/campaign-page';
 import { CampaignsPage } from '@/pages/campaigns-page';
@@ -18,6 +19,7 @@ import { CompaniesPage } from '@/pages/companies-page';
 import { CompanyPage } from '@/pages/company-page';
 import { ContactsPage } from '@/pages/contacts-page';
 import { DashboardPage } from '@/pages/dashboard-page';
+import { InventoryPage } from '@/pages/inventory-page';
 import { LoginPage, safeRedirect } from '@/pages/login-page';
 import { NomenclaturesPage } from '@/pages/nomenclatures-page';
 import { PipelinePage } from '@/pages/pipeline-page';
@@ -187,6 +189,29 @@ const campaignRoute = createRoute({
   },
 });
 
+const inventoryRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'inventory',
+  component: () => (
+    <RequirePermission permission="asset.read">
+      <InventoryPage />
+    </RequirePermission>
+  ),
+});
+
+const assetRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'inventory/$assetId',
+  component: function AssetRoute() {
+    const { assetId } = assetRoute.useParams();
+    return (
+      <RequirePermission permission="asset.read">
+        <AssetPage key={assetId} assetId={assetId} />
+      </RequirePermission>
+    );
+  },
+});
+
 const tasksRoute = createRoute({
   getParentRoute: () => appRoute,
   path: 'tasks',
@@ -248,6 +273,8 @@ const routeTree = rootRoute.addChildren([
     briefRoute,
     campaignsRoute,
     campaignRoute,
+    inventoryRoute,
+    assetRoute,
     ...placeholderRoutes,
   ]),
 ]);
