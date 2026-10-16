@@ -94,7 +94,7 @@ with `UPDATE … RETURNING`) and are unique per tenant.
 | user                | `email` (citext)                                                                |
 | membership          | `(tenant_id, user_id)`                                                          |
 | organisation        | `(tenant_id, vat_number) WHERE vat_number IS NOT NULL AND archived_at IS NULL`  |
-| ooh_asset           | `(tenant_id, code)`                                                             |
+| ooh_asset           | `(tenant_id, code)`; `(tenant_id, external_ref) WHERE external_ref IS NOT NULL` |
 | mount_position      | `(asset_id, position_no)`                                                       |
 | advertising_face    | `(mount_position_id, face_code)`                                                |
 | candidate_position  | `(campaign_location_id, mount_position_id)`                                     |
@@ -128,16 +128,16 @@ except ADJUSTMENT lines, `lower(period) <= upper(period)`, currency ISO-4217 for
 
 **Indexes (non-exhaustive)**
 
-| Purpose               | Index                                                                                                                         |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| Tenant-scoped listing | B-tree `(tenant_id, status, created_at DESC)` on main lists                                                                   |
-| FK lookups            | B-tree on every FK column, leading with `tenant_id`                                                                           |
-| **Spatial**           | GiST on `ooh_asset.location`, `campaign_location.store_point`, `evidence.gps`, `geo_area.geom`                                |
-| Bookings by face/time | GiST `(face_id, period)` (created by exclusion constraint) + B-tree `(tenant_id, campaign_location_id)`                       |
-| Search                | GIN trigram on `organisation.display_name`, `ooh_asset.address`, `contact` names; GIN `tsvector` (unaccent) for global search |
-| Scheduler scans       | Partial B-tree `campaign_location (tenant_id, end_date) WHERE status IN ('LIVE','REMOVAL_DUE')`                               |
-| Tasks                 | `(tenant_id, assignee_membership_id, status, due_at)`                                                                         |
-| Audit                 | `(tenant_id, subject_type, subject_id, occurred_at DESC)` per monthly partition                                               |
+| Purpose               | Index                                                                                                                                                                                                                                                                                                                   |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Tenant-scoped listing | B-tree `(tenant_id, status, created_at DESC)` on main lists                                                                                                                                                                                                                                                             |
+| FK lookups            | B-tree on every FK column, leading with `tenant_id`                                                                                                                                                                                                                                                                     |
+| **Spatial**           | GiST on `ooh_asset.location`, `campaign_location.store_point`, `evidence.gps`, `geo_area.geom`. Under RLS the planner can't use them for PostGIS predicates (not leakproof), so many-point lookups go through `SECURITY DEFINER` functions that filter the tenant explicitly (`asset_nearby_same_kind`, migration 0030) |
+| Bookings by face/time | GiST `(face_id, period)` (created by exclusion constraint) + B-tree `(tenant_id, campaign_location_id)`                                                                                                                                                                                                                 |
+| Search                | GIN trigram on `organisation.display_name`, `ooh_asset.address`, `contact` names; GIN `tsvector` (unaccent) for global search                                                                                                                                                                                           |
+| Scheduler scans       | Partial B-tree `campaign_location (tenant_id, end_date) WHERE status IN ('LIVE','REMOVAL_DUE')`                                                                                                                                                                                                                         |
+| Tasks                 | `(tenant_id, assignee_membership_id, status, due_at)`                                                                                                                                                                                                                                                                   |
+| Audit                 | `(tenant_id, subject_type, subject_id, occurred_at DESC)` per monthly partition                                                                                                                                                                                                                                         |
 
 ## 5. GIS design
 

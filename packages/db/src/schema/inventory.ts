@@ -18,6 +18,7 @@ import {
   text,
   timestamp,
   unique,
+  uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
 import { geographyPoint, primaryId, tenantIdColumn, timestamps, versionColumn } from './columns';
@@ -138,6 +139,8 @@ export const oohAsset = pgTable(
       .notNull()
       .default(sql`'{}'::jsonb`),
     notes: text('notes'),
+    /** The asset's code in the system it came from (Excel, My Maps); makes CSV re-imports skip it. */
+    externalRef: text('external_ref'),
     suspendReason: text('suspend_reason'),
     createdByMembershipId: uuid('created_by_membership_id'),
     ...timestamps(),
@@ -159,6 +162,13 @@ export const oohAsset = pgTable(
     index('ooh_asset_location_idx').using('gist', t.location),
     index('ooh_asset_type_idx').on(t.tenantId, t.assetTypeId),
     index('ooh_asset_lifecycle_idx').on(t.tenantId, t.lifecycle),
+    uniqueIndex('ooh_asset_external_ref_uq')
+      .on(t.tenantId, t.externalRef)
+      .where(sql`${t.externalRef} IS NOT NULL`),
+    check(
+      'ooh_asset_external_ref_ck',
+      sql`${t.externalRef} IS NULL OR length(btrim(${t.externalRef})) BETWEEN 1 AND 100`,
+    ),
     check(
       'ooh_asset_suspended_ck',
       sql`(${t.lifecycle} = 'SUSPENDED') = (length(btrim(coalesce(${t.suspendReason}, ''))) > 0)`,

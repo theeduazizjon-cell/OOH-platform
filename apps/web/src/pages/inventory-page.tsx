@@ -75,7 +75,15 @@ export function InventoryPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-xl font-semibold">Inventory</h1>
         {hasPermission(me, 'asset.create') && !creating && types.data && (
-          <Button onClick={() => setCreating(true)}>New asset</Button>
+          <div className="flex gap-2">
+            <Link
+              to="/app/inventory/import"
+              className="inline-flex h-9 items-center rounded-md border border-slate-300 bg-white px-3 text-sm font-medium hover:bg-slate-50"
+            >
+              Import CSV
+            </Link>
+            <Button onClick={() => setCreating(true)}>New asset</Button>
+          </div>
         )}
       </div>
       {creating && types.data && (

@@ -19,6 +19,7 @@ import { CompaniesPage } from '@/pages/companies-page';
 import { CompanyPage } from '@/pages/company-page';
 import { ContactsPage } from '@/pages/contacts-page';
 import { DashboardPage } from '@/pages/dashboard-page';
+import { InventoryImportPage } from '@/pages/inventory-import-page';
 import { InventoryPage } from '@/pages/inventory-page';
 import { LoginPage, safeRedirect } from '@/pages/login-page';
 import { NomenclaturesPage } from '@/pages/nomenclatures-page';
@@ -199,6 +200,16 @@ const inventoryRoute = createRoute({
   ),
 });
 
+const inventoryImportRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'inventory/import',
+  component: () => (
+    <RequirePermission permission="asset.create">
+      <InventoryImportPage />
+    </RequirePermission>
+  ),
+});
+
 const assetRoute = createRoute({
   getParentRoute: () => appRoute,
   path: 'inventory/$assetId',
@@ -274,6 +285,7 @@ const routeTree = rootRoute.addChildren([
     campaignsRoute,
     campaignRoute,
     inventoryRoute,
+    inventoryImportRoute,
     assetRoute,
     ...placeholderRoutes,
   ]),

@@ -57,6 +57,7 @@ export function updateAssetBody(
     county: values.county,
     attributes: values.attributes,
     notes: values.notes,
+    externalRef: values.externalRef,
     ...(duplicateReason ? { duplicateOverride: { reason: duplicateReason } } : {}),
   };
 }
@@ -260,6 +261,7 @@ export function AssetPage({ assetId }: { assetId: string }) {
                   Street View ↗
                 </a>
               </p>
+              {a.externalRef && <p className="text-slate-500">Old reference {a.externalRef}</p>}
               {a.lastVerifiedAt && (
                 <p className="text-slate-500">Last verified {a.lastVerifiedAt.slice(0, 10)}</p>
               )}
