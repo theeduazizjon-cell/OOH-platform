@@ -30,7 +30,8 @@ import { and, eq } from 'drizzle-orm';
 import type { LightMyRequestResponse } from 'fastify';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 import { PasswordService } from '../src/core/auth/password.service';
-import { createTestApp } from './support';
+import sharp from 'sharp';
+import { createTestApp, uploadFile } from './support';
 
 const PASSWORD = 'correct horse battery staple';
 const suffix = Date.now().toString(36);
@@ -303,12 +304,30 @@ describe('terms, lifecycle and blocks', () => {
     expect((await send('sales', 'GET', `/assets/${pole.id}`)).json<AssetDetail>().terms).toBeNull();
   });
 
-  it('activates with current terms; suspends with a reason; only admins decommission', async () => {
+  it('activates with current terms and a photo; suspends with a reason; only admins decommission', async () => {
     const bare = (await createAsset('mesh', east(2000))).json<AssetDetail>();
     const refused = await send('buyer', 'POST', `/assets/${bare.id}/actions/activate`, {}, bare.version);
     expect(refused.statusCode).toBe(422);
+    expect(refused.json<{ errors: { path: string }[] }>().errors.map((e) => e.path)).toEqual([
+      'terms',
+      'photos',
+    ]);
 
+    // Terms alone are not enough: a checked photo too.
     let p = (await send('buyer', 'GET', `/assets/${pole.id}`)).json<AssetDetail>();
+    const noPhoto = await send('buyer', 'POST', `/assets/${p.id}/actions/activate`, {}, p.version);
+    expect(noPhoto.json<{ errors: { path: string }[] }>().errors.map((e) => e.path)).toEqual(['photos']);
+    const photo = await sharp({ create: { width: 64, height: 48, channels: 3, background: '#3a6' } })
+      .jpeg()
+      .toBuffer();
+    const link = await uploadFile(app, tokens.buyer, {
+      subjectType: 'asset',
+      subjectId: p.id,
+      purpose: 'ASSET_PHOTO',
+      body: photo,
+      mime: 'image/jpeg',
+    });
+    expect(link.file.status).toBe('READY');
     p = (await send('buyer', 'POST', `/assets/${p.id}/actions/activate`, {}, p.version)).json();
     expect(p).toMatchObject({ lifecycle: 'ACTIVE', actions: ['suspend', 'decommission'] });
     expect((await send('buyer', 'POST', `/assets/${p.id}/actions/suspend`, {}, p.version)).statusCode).toBe(

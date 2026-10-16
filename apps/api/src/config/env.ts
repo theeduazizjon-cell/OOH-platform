@@ -38,6 +38,19 @@ export const envSchema = z.object({
   OUTBOX_DISPATCH_IN_PROCESS: z.stringbool().default(false),
   /** Google Geocoding (server key, IP-restricted). Unset: store pins are placed by hand. */
   GOOGLE_MAPS_SERVER_KEY: z.string().min(20).optional(),
+  /** Where uploaded files live: `local` (a directory, development only) or `s3` (S3 or MinIO). */
+  FILE_STORAGE: z.enum(['local', 's3']).default('local'),
+  FILE_STORAGE_DIR: z.string().min(1).default('.local-files'),
+  S3_ENDPOINT: z.url().optional(),
+  S3_REGION: z.string().min(1).default('eu-central-1'),
+  S3_BUCKET: z.string().min(3).optional(),
+  S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+  S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  S3_FORCE_PATH_STYLE: z.stringbool().default(true),
+  /** Virus scanning of uploads: `clamav` (clamd over TCP) or `none` (development only). */
+  FILE_SCANNER: z.enum(['none', 'clamav']).default('none'),
+  CLAMAV_HOST: z.string().min(1).default('localhost'),
+  CLAMAV_PORT: z.coerce.number().int().min(1).max(65535).default(3310),
 });
 
 export type Env = z.infer<typeof envSchema> & { COOKIE_SECURE: boolean };
@@ -56,6 +69,14 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     throw new InvalidEnvironmentError(
       'OUTBOX_DISPATCH_IN_PROCESS is for development; run the worker in production',
     );
+  }
+  if (env.FILE_STORAGE === 's3' && !(env.S3_BUCKET && env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY)) {
+    throw new InvalidEnvironmentError(
+      'FILE_STORAGE=s3 needs S3_BUCKET, S3_ACCESS_KEY_ID and S3_SECRET_ACCESS_KEY',
+    );
+  }
+  if (env.NODE_ENV === 'production' && (env.FILE_STORAGE === 'local' || env.FILE_SCANNER === 'none')) {
+    throw new InvalidEnvironmentError('Production needs FILE_STORAGE=s3 and FILE_SCANNER=clamav');
   }
   if (env.NODE_ENV === 'production' && env.COOKIE_SECURE === false) {
     throw new InvalidEnvironmentError('COOKIE_SECURE=false is not allowed in production');
