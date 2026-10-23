@@ -5,6 +5,8 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  // One .env at the repository root; only VITE_* variables reach the browser bundle.
+  envDir: '../..',
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, 'src'),

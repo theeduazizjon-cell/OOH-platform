@@ -21,6 +21,8 @@ import { ContactsPage } from '@/pages/contacts-page';
 import { DashboardPage } from '@/pages/dashboard-page';
 import { InventoryImportPage } from '@/pages/inventory-import-page';
 import { InventoryPage } from '@/pages/inventory-page';
+import { MapPage } from '@/pages/map-page';
+import { parseViewport } from '@/lib/map';
 import { LoginPage, safeRedirect } from '@/pages/login-page';
 import { NomenclaturesPage } from '@/pages/nomenclatures-page';
 import { PipelinePage } from '@/pages/pipeline-page';
@@ -200,6 +202,37 @@ const inventoryRoute = createRoute({
   ),
 });
 
+const mapRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: 'map',
+  // The viewport lives in the URL, so a map view can be shared or reloaded.
+  validateSearch: (search: Record<string, unknown>): { lat?: number; lng?: number; z?: number } => {
+    const viewport = parseViewport(search);
+    return viewport ? { lat: viewport.center.lat, lng: viewport.center.lng, z: viewport.zoom } : {};
+  },
+  component: function MapRoute() {
+    const search = mapRoute.useSearch();
+    const navigate = mapRoute.useNavigate();
+    return (
+      <RequirePermission permission="asset.read">
+        <MapPage
+          initial={parseViewport(search)}
+          onViewportChange={({ center, zoom }) =>
+            void navigate({
+              search: {
+                lat: Math.round(center.lat * 1e5) / 1e5,
+                lng: Math.round(center.lng * 1e5) / 1e5,
+                z: zoom,
+              },
+              replace: true,
+            })
+          }
+        />
+      </RequirePermission>
+    );
+  },
+});
+
 const inventoryImportRoute = createRoute({
   getParentRoute: () => appRoute,
   path: 'inventory/import',
@@ -284,6 +317,7 @@ const routeTree = rootRoute.addChildren([
     briefRoute,
     campaignsRoute,
     campaignRoute,
+    mapRoute,
     inventoryRoute,
     inventoryImportRoute,
     assetRoute,
