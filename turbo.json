@@ -16,7 +16,8 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "outputs": ["dist/**"],
+      "env": ["VITE_*"]
     },
     "typecheck": {
       "dependsOn": ["^build"]

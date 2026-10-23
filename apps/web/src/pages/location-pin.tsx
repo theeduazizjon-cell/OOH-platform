@@ -1,5 +1,6 @@
 import type { GeocodeStatus, LocationItem } from '@ooh/contracts';
 import { type FormEvent, useState } from 'react';
+import { formatPoint, MapPicker } from '@/components/map/map-picker';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/card';
 import { Input, Label } from '@/components/ui/input';
@@ -57,8 +58,8 @@ export function googleMapsLink(
 }
 
 /**
- * Place or accept a store pin (04-user-flows.md A7). The map picker arrives with the Map module (M5);
- * until then the pin is typed, pasted from Google Maps, or the geocoder's suggestion is accepted.
+ * Place or accept a store pin (04-user-flows.md A7): click or drag it on the map, type or paste
+ * coordinates / a Google Maps link, or accept the geocoder's suggestion.
  */
 export function PinEditor({
   location,
@@ -72,6 +73,7 @@ export function PinEditor({
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const current = location.storePoint;
+  const [coordinates, setCoordinates] = useState(current ? `${current.lat}, ${current.lng}` : '');
 
   async function save(pin: { lat: number; lng: number }) {
     setSaving(true);
@@ -87,8 +89,7 @@ export function PinEditor({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const value = new FormData(event.currentTarget).get('coordinates');
-    const pin = parseCoordinates(typeof value === 'string' ? value : '');
+    const pin = parseCoordinates(coordinates);
     if (!pin) return setError('Paste coordinates like "45.3486, 25.5517" or a Google Maps link to the spot.');
     void save(pin);
   }
@@ -124,9 +125,16 @@ export function PinEditor({
           id={`pin-${location.id}`}
           name="coordinates"
           placeholder="45.3486, 25.5517"
-          defaultValue={current ? `${current.lat}, ${current.lng}` : ''}
+          value={coordinates}
+          onChange={(e) => setCoordinates(e.currentTarget.value)}
         />
       </div>
+      <MapPicker
+        label={`Store pin map: ${location.name}`}
+        value={parseCoordinates(coordinates)}
+        onChange={(p) => setCoordinates(formatPoint(p))}
+        className="h-64"
+      />
       <div className="flex flex-wrap items-center justify-between gap-2">
         <a
           href={googleMapsLink(location)}

@@ -5,13 +5,16 @@ import {
   attributeProblems,
   DUPLICATE_RADIUS_M,
   type NearbyAsset,
+  type ReverseGeocodeResponse,
 } from '@ooh/contracts';
 import { Link } from '@tanstack/react-router';
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useRef, useState } from 'react';
+import { formatPoint, MapPicker } from '@/components/map/map-picker';
+import { useMapsEnabled } from '@/components/map/maps';
 import { Button } from '@/components/ui/button';
 import { Alert } from '@/components/ui/card';
 import { Input, Label } from '@/components/ui/input';
-import { ApiError } from '@/lib/api';
+import { ApiError, api } from '@/lib/api';
 import { LIFECYCLE_LABELS } from './asset-status';
 import { parseCoordinates } from './location-pin';
 
@@ -57,8 +60,8 @@ export function readAttributes(
 }
 
 /**
- * Create an asset, or edit its location and details (09-screen-map.md "create/edit asset"). The map
- * picker arrives with the Map module (M5); until then the point is typed or pasted from Google Maps.
+ * Create an asset, or edit its location and details (09-screen-map.md "create/edit asset"). The point
+ * is picked on the map (existing assets drawn around it), typed, or pasted from Google Maps.
  * A same-kind asset within 10 m answers 409 DUPLICATE_SUSPECTED: the form lists it and asks for a
  * reason before trying again.
  */
@@ -80,12 +83,50 @@ export function AssetForm({
   const [errors, setErrors] = useState<string[]>([]);
   const [nearby, setNearby] = useState<NearbyAsset[] | null>(null);
   const [saving, setSaving] = useState(false);
+  const current = initial?.location;
+  const [coordinates, setCoordinates] = useState(current ? `${current.lat}, ${current.lng}` : '');
+  const [lookup, setLookup] = useState<{ busy: boolean; message: string | null }>({
+    busy: false,
+    message: null,
+  });
+  const formRef = useRef<HTMLFormElement>(null);
+  const mapsEnabled = useMapsEnabled();
   const type = types.find((t) => t.id === typeId);
+  const point = parseCoordinates(coordinates);
+
+  /** Address, city and county from the pin (POST /geo/reverse), into the form's fields. */
+  async function fillAddress() {
+    if (!point) return;
+    setLookup({ busy: true, message: null });
+    try {
+      const { configured, result } = await api.request<ReverseGeocodeResponse>('/geo/reverse', {
+        method: 'POST',
+        json: point,
+      });
+      if (!configured)
+        return setLookup({ busy: false, message: 'Address lookup is not configured on the server.' });
+      if (!result) return setLookup({ busy: false, message: 'No address found at this point.' });
+      const form = formRef.current;
+      for (const [name, value] of [
+        ['address', result.address ?? result.formattedAddress],
+        ['city', result.city],
+        ['county', result.county],
+      ] as const) {
+        const field = form?.elements.namedItem(name);
+        if (field instanceof HTMLInputElement && value) field.value = value;
+      }
+      setLookup({ busy: false, message: `Filled from: ${result.formattedAddress}` });
+    } catch (caught) {
+      setLookup({
+        busy: false,
+        message: caught instanceof ApiError ? caught.message : 'Could not reach the server.',
+      });
+    }
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const point = parseCoordinates(text(form, 'coordinates') ?? '');
     const attributes = type ? readAttributes(type.attributeSchema, form) : null;
     const reason = nearby ? text(form, 'duplicateReason') : null;
     const problems = [
@@ -126,9 +167,14 @@ export function AssetForm({
     }
   }
 
-  const current = initial?.location;
   return (
-    <form className="space-y-4" onSubmit={(e) => void submit(e)} noValidate aria-label={submitLabel}>
+    <form
+      ref={formRef}
+      className="space-y-4"
+      onSubmit={(e) => void submit(e)}
+      noValidate
+      aria-label={submitLabel}
+    >
       {errors.length > 0 && (
         <Alert>
           {errors.length === 1 ? (
@@ -172,8 +218,30 @@ export function AssetForm({
             id="asset-coordinates"
             name="coordinates"
             placeholder="45.3486, 25.5517"
-            defaultValue={current ? `${current.lat}, ${current.lng}` : ''}
+            value={coordinates}
+            onChange={(e) => setCoordinates(e.currentTarget.value)}
           />
+        </div>
+        <div className="space-y-1.5 sm:col-span-2">
+          <MapPicker
+            label="Asset position"
+            value={point}
+            onChange={(p) => setCoordinates(formatPoint(p))}
+            showAssets
+            excludeAssetId={initial?.id}
+          />
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
+            {mapsEnabled && <span>Click the map or drag the pin; other assets are shown around it.</span>}
+            <Button
+              variant="secondary"
+              className="h-7 px-2 text-xs"
+              disabled={!point || lookup.busy}
+              onClick={() => void fillAddress()}
+            >
+              {lookup.busy ? 'Looking up…' : 'Fill address from the pin'}
+            </Button>
+            {lookup.message && <span role="status">{lookup.message}</span>}
+          </div>
         </div>
         <div className="space-y-1.5 sm:col-span-2">
           <Label htmlFor="asset-address">Address</Label>

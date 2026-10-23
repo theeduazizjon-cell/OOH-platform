@@ -35,7 +35,7 @@ export const NAV_ITEMS: readonly NavItem[] = [
     icon: Megaphone,
     permission: 'campaign.read',
   },
-  { label: 'Map', path: '/app/map', icon: MapIcon, permission: 'asset.read', milestone: 'M5' },
+  { label: 'Map', path: '/app/map', icon: MapIcon, permission: 'asset.read' },
   { label: 'Inventory', path: '/app/inventory', icon: Warehouse, permission: 'asset.read' },
   {
     label: 'Operations',
